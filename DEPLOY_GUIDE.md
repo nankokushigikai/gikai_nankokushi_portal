@@ -52,3 +52,28 @@
 - GitHub Pages は静的配信のみで、独自サーバー処理は動かない
 - テスト用と本番用の Supabase は分ける
 - ブラウザ localStorage のみを正データにしない
+
+## 8. 政務活動費入力（Next.js）の本番公開手順
+
+`seimukatudouhi-app` は Next.js アプリのため、GitHub Pages では動作しません。
+Vercel / Render / Cloud Run などの Node.js 実行環境へデプロイしてください。
+
+### 推奨: Vercel での公開手順
+1. Vercel で新規プロジェクトを作成する
+2. リポジトリ `yamahiro1960/gikai_nankokushi_portal` を連携する
+3. `Root Directory` を `seimukatudouhi-app` に設定する
+4. Environment Variables に以下を登録する
+	- `NEXT_PUBLIC_SUPABASE_URL`
+	- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+5. デプロイ実行後、公開URL（例: `https://xxxxx.vercel.app`）を控える
+
+### ポータル側リンク設定
+1. ルートの `auth-config.js` を開く
+2. `seimukatudouhiAppBaseUrl` に公開URLを設定する
+	- 例: `seimukatudouhiAppBaseUrl: "https://xxxxx.vercel.app"`
+3. これにより `index.html` の「政務活動費入力」タイルが
+	`https://xxxxx.vercel.app/activities/new` を開くようになる
+
+### 補足
+- `seimukatudouhiAppBaseUrl` が未設定の場合、入力タイルは `seimukatudouhi.html` にフォールバックします。
+- 本番公開後は `localhost:3000` を使う必要はありません。

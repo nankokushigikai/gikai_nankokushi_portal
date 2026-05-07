@@ -1,0 +1,11 @@
+# Next.js sub app artifacts
+seimukatudouhi-app/node_modules/
+seimukatudouhi-app/.next/
+seimukatudouhi-app/.vercel/
+seimukatudouhi-app/.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

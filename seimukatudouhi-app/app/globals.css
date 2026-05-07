@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f3f6f8;
+  --text: #0f172a;
+  --card: #ffffff;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 20% 10%, #dbeafe, transparent 30%),
+    radial-gradient(circle at 80% 20%, #fef3c7, transparent 28%),
+    var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif;
+}
