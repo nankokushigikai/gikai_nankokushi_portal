@@ -210,14 +210,46 @@
             return `user_general_question_draft_${memberId}`;
         }
 
-        async function getCurrentAuthUserId() {
+        function isUuid(value) {
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+        }
+
+        function memberIdToPseudoUuid(memberId) {
+            const source = String(memberId || "").trim();
+            if (!source) {
+                return "";
+            }
+            const hex = Array.from(source)
+                .map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0"))
+                .join("")
+                .slice(0, 32)
+                .padEnd(32, "0");
+            return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+        }
+
+        async function resolveAccountId() {
             const supabase = getClient();
             const { data, error } = await supabase.auth.getSession();
             if (error) {
                 throw error;
             }
-            const userId = data && data.session && data.session.user ? data.session.user.id : "";
-            return userId || "";
+            const authUserId = data && data.session && data.session.user ? data.session.user.id : "";
+            if (isUuid(authUserId)) {
+                return authUserId;
+            }
+
+            const localSession = window.portalAuth && typeof window.portalAuth.getSession === "function"
+                ? window.portalAuth.getSession()
+                : null;
+            const localId = localSession && (localSession.userId || localSession.memberId)
+                ? (localSession.userId || localSession.memberId)
+                : "";
+
+            if (isUuid(localId)) {
+                return localId;
+            }
+
+            return memberIdToPseudoUuid(localId);
         }
 
         function showPanel(panelId) {
@@ -266,9 +298,9 @@
             statusEl.textContent = "保存中...";
 
             try {
-                const accountId = await getCurrentAuthUserId();
+                const accountId = await resolveAccountId();
                 if (!accountId) {
-                    statusEl.textContent = "認証情報を取得できませんでした。再ログインしてください。";
+                    statusEl.textContent = "アカウント情報を取得できませんでした。";
                     return;
                 }
 
@@ -306,10 +338,17 @@
             tbody.innerHTML = '<tr><td class="px-3 py-2 text-gray-500 text-center" colspan="6">読み込み中...</td></tr>';
 
             try {
+                const accountId = await resolveAccountId();
+                if (!accountId) {
+                    tbody.innerHTML = '<tr><td class="px-3 py-2 text-gray-500 text-center" colspan="6">アカウント情報を取得できません</td></tr>';
+                    return;
+                }
+
                 const supabase = getClient();
                 const { data, error } = await supabase
                     .from("general_question_material")
                     .select("id, category, title, summary, created_at, updated_at")
+                    .eq("account_id", accountId)
                     .order("created_at", { ascending: false });
 
                 if (error) {
