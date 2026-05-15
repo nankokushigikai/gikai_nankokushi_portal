@@ -50,26 +50,60 @@ function Ensure-Directory {
     }
 }
 
-function Find-PgDumpPath {
-    $cmd = Get-Command pg_dump -ErrorAction SilentlyContinue
-    if ($null -ne $cmd) {
-        return $cmd.Source
+function Get-PgDumpMajorVersion {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    try {
+        $versionText = & $Path --version 2>$null
+        $match = [regex]::Match(($versionText | Out-String), 'pg_dump\s+\(PostgreSQL\)\s+(\d+)')
+        if ($match.Success) {
+            return [int]$match.Groups[1].Value
+        }
+    } catch {
+        return -1
     }
 
-    $candidates = @(
-        "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe",
-        "C:\Program Files\PostgreSQL\17\bin\pg_dump.exe",
-        "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe",
-        "C:\Program Files\PostgreSQL\15\bin\pg_dump.exe"
-    )
+    return -1
+}
 
-    foreach ($path in $candidates) {
-        if (Test-Path -LiteralPath $path) {
-            return $path
+function Find-PgDumpPath {
+    $candidateSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    $cmd = Get-Command pg_dump -ErrorAction SilentlyContinue
+    if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace($cmd.Source)) {
+        if ($candidateSet.Add($cmd.Source)) {
+            [void]$candidates.Add($cmd.Source)
         }
     }
 
-    return ""
+    foreach ($path in @(
+        "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe",
+        "C:\Program Files\PostgreSQL\17\bin\pg_dump.exe",
+        "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe",
+        "C:\Program Files\PostgreSQL\15\bin\pg_dump.exe"
+    )) {
+        if ((Test-Path -LiteralPath $path) -and $candidateSet.Add($path)) {
+            [void]$candidates.Add($path)
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        return ""
+    }
+
+    $bestPath = ""
+    $bestVersion = -1
+
+    foreach ($candidate in $candidates) {
+        $majorVersion = Get-PgDumpMajorVersion -Path $candidate
+        if ($majorVersion -gt $bestVersion) {
+            $bestVersion = $majorVersion
+            $bestPath = $candidate
+        }
+    }
+
+    return $bestPath
 }
 
 function Infer-PgHostFromSupabaseUrl {
