@@ -66,6 +66,7 @@
                     <span id="ink-status-top" class="text-gray-500"></span>
                 </div>
                 <div class="ml-auto flex items-center gap-2">
+                    <button id="term-register-btn-top" type="button" class="w-36 md:w-44 px-4 py-3 rounded-lg border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-800 font-semibold text-center">用語登録</button>
                     <button id="pdf-prev-page-btn-top" type="button" class="w-36 md:w-44 px-6 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-center">前ページ</button>
                     <button id="pdf-next-page-btn-top" type="button" class="w-36 md:w-44 px-6 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-center">次ページ</button>
                 </div>
@@ -118,6 +119,7 @@
                     <span id="ink-status" class="text-gray-500"></span>
                 </div>
                 <div class="ml-auto flex items-center gap-2">
+                    <button id="term-register-btn" type="button" class="w-36 md:w-44 px-4 py-3 rounded-lg border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-800 font-semibold text-center">用語登録</button>
                     <button id="pdf-prev-page-btn" type="button" class="w-36 md:w-44 px-6 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-center">前ページ</button>
                     <button id="pdf-next-page-btn" type="button" class="w-36 md:w-44 px-6 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-center">次ページ</button>
                 </div>
@@ -188,6 +190,44 @@
             </section>
         </div>
     </main>
+
+    <div id="term-register-modal" class="fixed inset-0 z-50 hidden bg-black/40 p-4">
+        <div class="mx-auto mt-8 max-w-2xl bg-white rounded-xl shadow-2xl border border-violet-200">
+            <div class="px-4 py-3 border-b border-violet-100 flex items-center justify-between">
+                <h2 class="text-base font-bold text-violet-800"><i class="fas fa-book mr-1"></i>用語登録</h2>
+                <button id="term-register-close-btn" type="button" class="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-600">閉じる</button>
+            </div>
+            <div class="p-4 space-y-3">
+                <p id="term-register-status" class="text-xs text-gray-500"></p>
+                <div>
+                    <label for="term-keyword-input" class="text-xs text-gray-600">キーワード（必須）</label>
+                    <input id="term-keyword-input" type="text" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="例: 南海トラフ">
+                </div>
+                <div>
+                    <label for="term-title-input" class="text-xs text-gray-600">タイトル</label>
+                    <input id="term-title-input" type="text" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="例: 南海トラフ地震対策">
+                </div>
+                <div>
+                    <label for="term-body-input" class="text-xs text-gray-600">内容（必須）</label>
+                    <textarea id="term-body-input" class="mt-1 w-full h-28 border border-violet-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="説明文を入力してください"></textarea>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label for="term-image-url-input" class="text-xs text-gray-600">画像URL</label>
+                        <input id="term-image-url-input" type="url" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://...">
+                    </div>
+                    <div>
+                        <label for="term-source-url-input" class="text-xs text-gray-600">参照URL</label>
+                        <input id="term-source-url-input" type="url" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://...">
+                    </div>
+                </div>
+            </div>
+            <div class="px-4 py-3 border-t border-violet-100 flex justify-end gap-2">
+                <button id="term-register-clear-btn" type="button" class="px-3 py-2 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-700">クリア</button>
+                <button id="term-register-save-btn" type="button" class="px-3 py-2 rounded bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold">保存</button>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -351,6 +391,83 @@
 
         function setSelectionLookupStatus(message) {
             document.getElementById("selection-lookup-status").textContent = message;
+        }
+
+        function setTermRegisterStatus(message) {
+            document.getElementById("term-register-status").textContent = message;
+        }
+
+        function clearTermRegisterForm() {
+            document.getElementById("term-keyword-input").value = "";
+            document.getElementById("term-title-input").value = "";
+            document.getElementById("term-body-input").value = "";
+            document.getElementById("term-image-url-input").value = "";
+            document.getElementById("term-source-url-input").value = "";
+            setTermRegisterStatus("入力してください");
+        }
+
+        function openTermRegisterModal() {
+            const modal = document.getElementById("term-register-modal");
+            modal.classList.remove("hidden");
+            setTermRegisterStatus("入力してください");
+            requestAnimationFrame(() => {
+                document.getElementById("term-keyword-input").focus();
+            });
+        }
+
+        function closeTermRegisterModal() {
+            const modal = document.getElementById("term-register-modal");
+            modal.classList.add("hidden");
+        }
+
+        async function saveTermRegisterEntry() {
+            const keyword = normalizeSelectedText(document.getElementById("term-keyword-input").value);
+            const title = normalizeSelectedText(document.getElementById("term-title-input").value);
+            const body = String(document.getElementById("term-body-input").value || "").trim();
+            const imageUrl = normalizeSelectedText(document.getElementById("term-image-url-input").value);
+            const sourceUrl = normalizeSelectedText(document.getElementById("term-source-url-input").value);
+            const saveBtn = document.getElementById("term-register-save-btn");
+
+            if (!keyword) {
+                setTermRegisterStatus("キーワードを入力してください");
+                return;
+            }
+            if (!body) {
+                setTermRegisterStatus("内容を入力してください");
+                return;
+            }
+
+            saveBtn.disabled = true;
+            setTermRegisterStatus("保存中...");
+
+            try {
+                const supabase = getNoteClient();
+                const memberId = getNoteMemberId();
+                const now = new Date().toISOString();
+                const { error } = await supabase
+                    .from("document_text_lookup")
+                    .insert({
+                        member_id: memberId || null,
+                        keyword,
+                        title: title || keyword,
+                        body,
+                        image_url: imageUrl || null,
+                        source_url: sourceUrl || null,
+                        updated_at: now
+                    });
+
+                if (error) {
+                    throw error;
+                }
+
+                setTermRegisterStatus("保存しました");
+                clearTermRegisterForm();
+            } catch (error) {
+                console.warn("用語登録エラー:", error);
+                setTermRegisterStatus(`保存エラー: ${formatSupabaseError(error)}`);
+            } finally {
+                saveBtn.disabled = false;
+            }
         }
 
         function setSelectionQueryText(text) {
@@ -1737,6 +1854,16 @@
         document.getElementById("pdf-next-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
         document.getElementById("memo-save-btn").addEventListener("click", saveTextNote);
         document.getElementById("memo-clear-btn").addEventListener("click", clearTextNote);
+        document.getElementById("term-register-btn-top").addEventListener("click", openTermRegisterModal);
+        document.getElementById("term-register-btn").addEventListener("click", openTermRegisterModal);
+        document.getElementById("term-register-close-btn").addEventListener("click", closeTermRegisterModal);
+        document.getElementById("term-register-clear-btn").addEventListener("click", clearTermRegisterForm);
+        document.getElementById("term-register-save-btn").addEventListener("click", saveTermRegisterEntry);
+        document.getElementById("term-register-modal").addEventListener("click", (event) => {
+            if (event.target.id === "term-register-modal") {
+                closeTermRegisterModal();
+            }
+        });
         document.getElementById("tag-list-btn-top").addEventListener("click", scrollToTagListPanel);
         document.getElementById("tag-list-btn").addEventListener("click", scrollToTagListPanel);
         const toggleTagMode = () => setTagPlacementMode(!tagPlacementMode);
