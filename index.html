@@ -26,7 +26,20 @@
         <!-- メインメッセージ -->
         <section class="mb-10">
             <h2 id="greeting-message" class="text-2xl font-bold mb-2">こんにちは、議員。</h2>
-            <p class="text-gray-600">本日の政策立案と議会DXの進捗を確認しましょう。</p>
+
+            <!-- お知らせタイル -->
+            <div class="mt-5 bg-white p-5 rounded-xl shadow-sm border-l-4 border-rose-500">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="text-rose-500 text-xl"><i class="fas fa-bullhorn"></i></div>
+                        <h3 class="text-base font-bold text-gray-800">お知らせ</h3>
+                    </div>
+                    <a href="system-settings.html" class="inline-block text-xs font-semibold text-rose-600 hover:text-rose-700">一覧を確認</a>
+                </div>
+                <ul id="announcement-tile-list" class="space-y-2 text-sm">
+                    <li class="text-gray-500">お知らせを読み込み中です...</li>
+                </ul>
+            </div>
         </section>
 
         <!-- タイル型メニュー -->
@@ -175,12 +188,82 @@
     <script src="auth-config.js"></script>
     <script src="auth.js"></script>
     <script>
+        function formatAnnouncementDate(dateValue) {
+            if (!dateValue) return "";
+            const parts = String(dateValue).split("-");
+            if (parts.length !== 3) return String(dateValue);
+            return `${parts[0]}/${parts[1]}/${parts[2]}`;
+        }
+
+        function buildAnnouncementLine(item) {
+            const dateText = formatAnnouncementDate(item.notice_date);
+            const start = item.start_time ? String(item.start_time).slice(0, 5) : "--:--";
+            const end = item.end_time ? String(item.end_time).slice(0, 5) : "--:--";
+            const base = `${dateText} ${start}-${end} ${item.title || ""}`.trim();
+            if (!item.content) {
+                return base;
+            }
+            return `${base} / ${item.content}`;
+        }
+
+        function renderAnnouncements(items) {
+            const list = document.getElementById("announcement-tile-list");
+            if (!list) return;
+
+            list.innerHTML = "";
+
+            if (!items || items.length === 0) {
+                const emptyItem = document.createElement("li");
+                emptyItem.className = "text-gray-500";
+                emptyItem.textContent = "現在、お知らせはありません。";
+                list.appendChild(emptyItem);
+                return;
+            }
+
+            const dotColors = ["bg-rose-500", "bg-amber-500", "bg-sky-500"];
+            items.forEach((item, index) => {
+                const li = document.createElement("li");
+                li.className = "flex items-start gap-2 text-gray-700";
+
+                const dot = document.createElement("span");
+                dot.className = `mt-1 inline-block w-1.5 h-1.5 rounded-full ${dotColors[index % dotColors.length]}`;
+
+                const text = document.createElement("span");
+                text.textContent = buildAnnouncementLine(item);
+
+                li.appendChild(dot);
+                li.appendChild(text);
+                list.appendChild(li);
+            });
+        }
+
+        async function loadAnnouncements(client) {
+            if (!client) {
+                renderAnnouncements([]);
+                return;
+            }
+
+            const { data, error } = await client
+                .from("announcements")
+                .select("notice_date,start_time,end_time,title,content")
+                .order("notice_date", { ascending: false })
+                .order("start_time", { ascending: true })
+                .limit(3);
+
+            if (error) {
+                renderAnnouncements([]);
+                return;
+            }
+
+            renderAnnouncements(data || []);
+        }
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
             authTargetId: "authArea",
             returnTo: "index.html",
-            onReady: (context) => {
+            onReady: async (context) => {
                 // ユーザーがログインしている場合、挨拶メッセージを更新
                 if (context.session || context.profile) {
                     const greetingElement = document.getElementById("greeting-message");
@@ -189,6 +272,8 @@
                         greetingElement.textContent = greeting;
                     }
                 }
+
+                await loadAnnouncements(context.client);
             }
         });
 

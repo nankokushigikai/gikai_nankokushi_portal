@@ -60,6 +60,78 @@
                 <p class="text-sm text-gray-600 mb-2">GitHub Pages でのテスト公開、Supabase 接続、Google ログイン設定、本番移行手順を文書化しています。</p>
                 <p class="text-sm text-indigo-700">ワークスペース内の DEPLOY_GUIDE.md を参照してください。</p>
             </div>
+
+            <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-rose-500 mt-6">
+                <h2 class="text-xl font-bold mb-2 text-gray-700">お知らせ登録</h2>
+                <p class="text-sm text-gray-600 mb-5">ポータルのお知らせを登録・編集します。公開順は「日付降順、開始時間昇順」です。</p>
+
+                <form id="announcement-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input id="notice_no" type="hidden">
+
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">日付</label>
+                        <input id="notice_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">タイトル</label>
+                        <input id="notice_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">開始時間</label>
+                        <input id="start_time" type="time" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">終了時間</label>
+                        <input id="end_time" type="time" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="text-sm font-semibold text-gray-700">内容</label>
+                        <textarea id="notice_content" rows="3" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="お知らせ本文を入力"></textarea>
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">担当者</label>
+                        <input id="owner_name" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 議会事務局 企画担当">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">連絡先電話</label>
+                        <input id="contact_phone" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 088-000-0000">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">連絡先メール</label>
+                        <input id="contact_email" type="email" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="example@nankoku.lg.jp">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">備考</label>
+                        <input id="remarks" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="補足事項があれば入力">
+                    </div>
+
+                    <div class="md:col-span-2 flex gap-3">
+                        <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">保存</button>
+                        <button type="button" id="announcement-clear" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">クリア</button>
+                    </div>
+                </form>
+                <p id="announcement-message" class="mt-3 text-sm text-gray-600"></p>
+            </section>
+
+            <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-slate-500 mt-6">
+                <h2 class="text-xl font-bold mb-4 text-gray-700">お知らせ一覧</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="text-left p-2 border">No</th>
+                                <th class="text-left p-2 border">日付</th>
+                                <th class="text-left p-2 border">時間</th>
+                                <th class="text-left p-2 border">タイトル</th>
+                                <th class="text-left p-2 border">担当者</th>
+                                <th class="text-left p-2 border">連絡先</th>
+                                <th class="text-left p-2 border">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="announcement-list"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -70,11 +142,173 @@
     <script src="auth-config.js"></script>
     <script src="auth.js"></script>
     <script>
+        let dbClient = null;
+
+        function clearAnnouncementForm() {
+            document.getElementById("announcement-form").reset();
+            document.getElementById("notice_no").value = "";
+        }
+
+        function formatTimeRange(startTime, endTime) {
+            const start = startTime || "--:--";
+            const end = endTime || "--:--";
+            return `${start} - ${end}`;
+        }
+
+        function setAnnouncementFormValues(item) {
+            document.getElementById("notice_no").value = String(item.no || "");
+            document.getElementById("notice_date").value = item.notice_date || "";
+            document.getElementById("start_time").value = item.start_time || "";
+            document.getElementById("end_time").value = item.end_time || "";
+            document.getElementById("notice_title").value = item.title || "";
+            document.getElementById("notice_content").value = item.content || "";
+            document.getElementById("owner_name").value = item.owner_name || "";
+            document.getElementById("contact_phone").value = item.contact_phone || "";
+            document.getElementById("contact_email").value = item.contact_email || "";
+            document.getElementById("remarks").value = item.remarks || "";
+        }
+
+        async function loadAnnouncements() {
+            const tbody = document.getElementById("announcement-list");
+            tbody.innerHTML = "";
+
+            const { data, error } = await dbClient
+                .from("announcements")
+                .select("no,notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks")
+                .order("notice_date", { ascending: false })
+                .order("start_time", { ascending: true })
+                .order("no", { ascending: false });
+
+            if (error) {
+                document.getElementById("announcement-message").textContent = "一覧読込失敗: " + error.message;
+                return;
+            }
+
+            (data || []).forEach((item) => {
+                const tr = document.createElement("tr");
+                const contactText = [item.contact_phone, item.contact_email].filter(Boolean).join(" / ");
+
+                tr.innerHTML = `
+                    <td class="p-2 border">${item.no}</td>
+                    <td class="p-2 border">${item.notice_date || ""}</td>
+                    <td class="p-2 border">${formatTimeRange(item.start_time, item.end_time)}</td>
+                    <td class="p-2 border">${item.title || ""}</td>
+                    <td class="p-2 border">${item.owner_name || ""}</td>
+                    <td class="p-2 border">${contactText}</td>
+                    <td class="p-2 border">
+                        <button class="text-indigo-700 hover:text-indigo-900 mr-3" data-edit="${item.no}">編集</button>
+                        <button class="text-rose-700 hover:text-rose-900" data-delete="${item.no}">削除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            tbody.querySelectorAll("button[data-edit]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const no = Number(btn.getAttribute("data-edit"));
+                    const target = (data || []).find((row) => row.no === no);
+                    if (!target) {
+                        return;
+                    }
+                    setAnnouncementFormValues(target);
+                    document.getElementById("announcement-message").textContent = `No.${no} を編集モードで読み込みました。`;
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                });
+            });
+
+            tbody.querySelectorAll("button[data-delete]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const no = Number(btn.getAttribute("data-delete"));
+                    const ok = confirm(`No.${no} を削除しますか？`);
+                    if (!ok) {
+                        return;
+                    }
+
+                    const { error: deleteError } = await dbClient
+                        .from("announcements")
+                        .delete()
+                        .eq("no", no);
+
+                    if (deleteError) {
+                        document.getElementById("announcement-message").textContent = "削除失敗: " + deleteError.message;
+                        return;
+                    }
+
+                    document.getElementById("announcement-message").textContent = `No.${no} を削除しました。`;
+                    await loadAnnouncements();
+                });
+            });
+        }
+
+        async function saveAnnouncement(event) {
+            event.preventDefault();
+
+            const noticeNo = document.getElementById("notice_no").value.trim();
+            const payload = {
+                notice_date: document.getElementById("notice_date").value,
+                start_time: document.getElementById("start_time").value,
+                end_time: document.getElementById("end_time").value,
+                title: document.getElementById("notice_title").value.trim(),
+                content: document.getElementById("notice_content").value.trim(),
+                owner_name: document.getElementById("owner_name").value.trim() || null,
+                contact_phone: document.getElementById("contact_phone").value.trim() || null,
+                contact_email: document.getElementById("contact_email").value.trim() || null,
+                remarks: document.getElementById("remarks").value.trim() || null,
+                updated_at: new Date().toISOString()
+            };
+
+            if (!payload.notice_date || !payload.start_time || !payload.end_time || !payload.title || !payload.content) {
+                document.getElementById("announcement-message").textContent = "必須項目を入力してください。";
+                return;
+            }
+
+            if (payload.start_time > payload.end_time) {
+                document.getElementById("announcement-message").textContent = "時間の入力を確認してください（開始時間 <= 終了時間）。";
+                return;
+            }
+
+            if (noticeNo) {
+                const { error } = await dbClient
+                    .from("announcements")
+                    .update(payload)
+                    .eq("no", Number(noticeNo));
+
+                if (error) {
+                    document.getElementById("announcement-message").textContent = "更新失敗: " + error.message;
+                    return;
+                }
+
+                document.getElementById("announcement-message").textContent = `No.${noticeNo} を更新しました。`;
+            } else {
+                const { error } = await dbClient
+                    .from("announcements")
+                    .insert(payload);
+
+                if (error) {
+                    document.getElementById("announcement-message").textContent = "登録失敗: " + error.message;
+                    return;
+                }
+
+                document.getElementById("announcement-message").textContent = "登録しました。";
+            }
+
+            clearAnnouncementForm();
+            await loadAnnouncements();
+        }
+
+        document.getElementById("announcement-form").addEventListener("submit", saveAnnouncement);
+        document.getElementById("announcement-clear").addEventListener("click", clearAnnouncementForm);
+
         portalAuth.init({
             requireAuth: true,
             minRole: "admin",
             authTargetId: "authArea",
-            returnTo: "system-settings.html"
+            returnTo: "system-settings.html",
+            onReady: async ({ client }) => {
+                dbClient = client;
+                clearAnnouncementForm();
+                await loadAnnouncements();
+            }
         });
     </script>
 </body>

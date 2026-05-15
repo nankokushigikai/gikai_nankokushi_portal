@@ -78,6 +78,25 @@ create table if not exists public.member_directory (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists public.announcements (
+    no bigserial primary key,
+    notice_date date not null,
+    start_time time not null,
+    end_time time not null,
+    title text not null,
+    content text not null,
+    owner_name text,
+    contact_phone text,
+    contact_email text,
+    remarks text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint announcements_time_check check (start_time <= end_time)
+);
+
+create index if not exists announcements_notice_date_idx
+on public.announcements (notice_date desc, start_time asc);
+
 alter table public.member_directory add column if not exists is_current boolean not null default true;
 alter table public.member_directory add column if not exists access_role text not null default '使用者';
 
@@ -85,6 +104,7 @@ alter table public.profiles enable row level security;
 alter table public.meeting_settings enable row level security;
 alter table public.member_positions_master enable row level security;
 alter table public.member_directory enable row level security;
+alter table public.announcements enable row level security;
 
 -- profiles ポリシー: 認証ユーザー向けのみ
 drop policy if exists profiles_select_own_or_admin on public.profiles;
@@ -172,6 +192,38 @@ drop policy if exists member_directory_delete_admin on public.member_directory;
 create policy member_directory_delete_admin on public.member_directory
 for delete using (
     exists (select 1 from public.profiles p where p.user_id = auth.uid() and p.role = 'admin')
+);
+
+-- announcements ポリシー
+-- 現在の運用では「利用者選択ログイン（local session）」時に auth.uid() が null になるため、
+-- anon ロールも許可して画面操作を継続できるようにする。
+-- 将来 Supabase Auth 完全移行後は anon 許可部分を削除すること。
+drop policy if exists announcements_select_authenticated on public.announcements;
+create policy announcements_select_authenticated on public.announcements
+for select using (auth.role() in ('anon', 'authenticated') or auth.uid() is not null);
+
+drop policy if exists announcements_insert_admin on public.announcements;
+create policy announcements_insert_admin on public.announcements
+for insert with check (
+    auth.role() in ('anon', 'authenticated')
+    or exists (select 1 from public.profiles p where p.user_id = auth.uid() and p.role = 'admin')
+);
+
+drop policy if exists announcements_update_admin on public.announcements;
+create policy announcements_update_admin on public.announcements
+for update using (
+    auth.role() in ('anon', 'authenticated')
+    or exists (select 1 from public.profiles p where p.user_id = auth.uid() and p.role = 'admin')
+) with check (
+    auth.role() in ('anon', 'authenticated')
+    or exists (select 1 from public.profiles p where p.user_id = auth.uid() and p.role = 'admin')
+);
+
+drop policy if exists announcements_delete_admin on public.announcements;
+create policy announcements_delete_admin on public.announcements
+for delete using (
+    auth.role() in ('anon', 'authenticated')
+    or exists (select 1 from public.profiles p where p.user_id = auth.uid() and p.role = 'admin')
 );
 
 -- ----------------------------------------------------------------------
