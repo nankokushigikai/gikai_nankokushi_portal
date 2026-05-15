@@ -72,7 +72,7 @@
             </div>
             <div id="pdf-stage" class="relative">
                 <canvas id="pdf-render-canvas" class="relative z-0 w-full border border-gray-200 rounded-lg bg-gray-50"></canvas>
-                <div id="pdf-text-layer" class="absolute inset-0 z-5 rounded-lg"></div>
+                <div id="pdf-text-layer" class="absolute inset-0 z-[5] rounded-lg"></div>
                 <canvas id="pdf-ink-canvas" class="absolute inset-0 z-10 rounded-lg" style="touch-action: none;"></canvas>
                 <div id="tag-pin-layer" class="absolute inset-0 z-20 pointer-events-none"></div>
                 <div id="tag-pin-popover" class="absolute z-30 hidden w-72 bg-white border border-sky-200 rounded-lg shadow-xl p-3">
@@ -212,6 +212,8 @@
         let tagRows = [];
         let pendingTagPosition = null;
         let activeTagPopoverId = null;
+        let latestSelectedText = "";
+        let selectionSearchTimer = null;
 
         const pdfjsLib = window.pdfjsLib;
         if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
@@ -237,6 +239,10 @@
 
         function getPdfCanvas() {
             return document.getElementById("pdf-render-canvas");
+        }
+
+        function getPdfTextLayer() {
+            return document.getElementById("pdf-text-layer");
         }
 
         function getInkContext() {
@@ -341,6 +347,140 @@
 
         function setTagStatus(message) {
             document.getElementById("tag-status").textContent = message;
+        }
+
+        function setSelectionLookupStatus(message) {
+            document.getElementById("selection-lookup-status").textContent = message;
+        }
+
+        function setSelectionQueryText(text) {
+            document.getElementById("selection-query-text").textContent = text || "(未選択)";
+        }
+
+        function escapeLikePattern(value) {
+            return String(value || "").replace(/[\\%_]/g, (ch) => `\\${ch}`);
+        }
+
+        function normalizeSelectedText(text) {
+            return String(text || "").replace(/\s+/g, " ").trim();
+        }
+
+        function renderSelectionLookupResults(items) {
+            const container = document.getElementById("selection-lookup-results");
+            container.innerHTML = "";
+
+            if (!Array.isArray(items) || items.length === 0) {
+                const empty = document.createElement("p");
+                empty.className = "text-sm text-gray-500";
+                empty.textContent = "一致する情報は見つかりませんでした。";
+                container.appendChild(empty);
+                return;
+            }
+
+            items.forEach((item) => {
+                const card = document.createElement("article");
+                card.className = "border border-violet-200 bg-white rounded-lg p-3";
+
+                const title = document.createElement("h3");
+                title.className = "text-sm font-bold text-violet-800";
+                title.textContent = item.title || item.keyword || "関連情報";
+                card.appendChild(title);
+
+                if (item.body) {
+                    const body = document.createElement("p");
+                    body.className = "mt-1 text-sm text-gray-700 whitespace-pre-wrap";
+                    body.textContent = item.body;
+                    card.appendChild(body);
+                }
+
+                if (item.image_url) {
+                    const img = document.createElement("img");
+                    img.className = "mt-2 max-h-40 rounded border border-gray-200";
+                    img.src = item.image_url;
+                    img.alt = item.title || "関連画像";
+                    card.appendChild(img);
+                }
+
+                if (item.source_url) {
+                    const link = document.createElement("a");
+                    link.className = "mt-2 inline-block text-xs text-indigo-700 hover:text-indigo-900 hover:underline";
+                    link.href = item.source_url;
+                    link.target = "_blank";
+                    link.rel = "noopener noreferrer";
+                    link.textContent = "参照元を開く";
+                    card.appendChild(link);
+                }
+
+                container.appendChild(card);
+            });
+        }
+
+        async function searchSelectionLookup(queryText) {
+            const q = normalizeSelectedText(queryText);
+            if (!q || q.length < 2) {
+                setSelectionLookupStatus("2文字以上を選択してください");
+                renderSelectionLookupResults([]);
+                return;
+            }
+
+            setSelectionLookupStatus("検索中...");
+
+            try {
+                const supabase = getNoteClient();
+                const pattern = `%${escapeLikePattern(q)}%`;
+                const { data, error } = await supabase
+                    .from("document_text_lookup")
+                    .select("id, keyword, title, body, image_url, source_url, updated_at")
+                    .or(`keyword.ilike.${pattern},title.ilike.${pattern},body.ilike.${pattern}`)
+                    .order("updated_at", { ascending: false })
+                    .limit(20);
+
+                if (error) {
+                    throw error;
+                }
+
+                renderSelectionLookupResults(data || []);
+                setSelectionLookupStatus(`${(data || []).length}件`);
+            } catch (error) {
+                console.warn("選択文字検索エラー:", error);
+                renderSelectionLookupResults([]);
+                setSelectionLookupStatus(`検索エラー: ${formatSupabaseError(error)}`);
+            }
+        }
+
+        function getCurrentSelectedTextInPdf() {
+            const stage = document.getElementById("pdf-stage");
+            const selection = window.getSelection ? window.getSelection() : null;
+            if (!stage || !selection || selection.isCollapsed) {
+                return "";
+            }
+
+            const anchorNode = selection.anchorNode;
+            const focusNode = selection.focusNode;
+            if (!anchorNode || !focusNode) {
+                return "";
+            }
+
+            if (!stage.contains(anchorNode) || !stage.contains(focusNode)) {
+                return "";
+            }
+
+            return normalizeSelectedText(selection.toString());
+        }
+
+        function scheduleSelectionLookup() {
+            if (selectionSearchTimer) {
+                clearTimeout(selectionSearchTimer);
+            }
+            selectionSearchTimer = setTimeout(async () => {
+                const selected = getCurrentSelectedTextInPdf();
+                if (!selected || selected === latestSelectedText) {
+                    return;
+                }
+                latestSelectedText = selected;
+                setSelectionQueryText(selected);
+                await searchSelectionLookup(selected);
+            }, 160);
         }
 
         function formatSupabaseError(error) {
@@ -570,6 +710,7 @@
         function resizeInkCanvas() {
             const pdfCanvas = getPdfCanvas();
             const canvas = getInkCanvas();
+            const textLayer = getPdfTextLayer();
             const ratio = window.devicePixelRatio || 1;
             const width = Math.floor(pdfCanvas.clientWidth || 0);
             const height = Math.floor(pdfCanvas.clientHeight || 0);
@@ -578,6 +719,10 @@
             canvas.height = Math.max(1, Math.floor(height * ratio));
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
+            if (textLayer) {
+                textLayer.style.width = `${width}px`;
+                textLayer.style.height = `${height}px`;
+            }
 
             const ctx = getInkContext();
             ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -588,12 +733,17 @@
 
         function updateInkCanvasVisibility() {
             const canvas = getInkCanvas();
+            const textLayer = getPdfTextLayer();
             const canDraw = inkModeEnabled;
             const hasInk = inkStrokes.length > 0;
 
             // 手書きデータは常時表示し、描画入力だけモードON時に有効化する
             canvas.classList.toggle("hidden", !(hasInk || canDraw));
             canvas.style.pointerEvents = canDraw ? "auto" : "none";
+            if (textLayer) {
+                textLayer.style.pointerEvents = canDraw ? "none" : "auto";
+                textLayer.style.userSelect = canDraw ? "none" : "text";
+            }
 
             updateInkToolButtons();
             syncInkSettingInputs();
@@ -752,6 +902,30 @@
             };
         }
 
+        async function renderPdfTextLayer(page, viewport) {
+            const textLayer = getPdfTextLayer();
+            if (!textLayer || !page) {
+                return;
+            }
+
+            textLayer.innerHTML = "";
+            textLayer.style.width = `${viewport.width}px`;
+            textLayer.style.height = `${viewport.height}px`;
+
+            const textContent = await page.getTextContent();
+            if (pdfjsLib && typeof pdfjsLib.renderTextLayer === "function") {
+                const task = pdfjsLib.renderTextLayer({
+                    textContent,
+                    container: textLayer,
+                    viewport,
+                    textDivs: []
+                });
+                if (task && task.promise) {
+                    await task.promise;
+                }
+            }
+        }
+
         async function renderPdfPage(pageNumber) {
             if (!pdfDoc) {
                 return;
@@ -775,6 +949,7 @@
             pdfCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
             pdfCtx.clearRect(0, 0, viewport.width, viewport.height);
             await page.render({ canvasContext: pdfCtx, viewport }).promise;
+            await renderPdfTextLayer(page, viewport);
 
             resizeInkCanvas();
             updatePdfPageIndicator();
@@ -1234,6 +1409,23 @@
             });
         }
 
+        function setupSelectionLookupEvents() {
+            const stage = document.getElementById("pdf-stage");
+            if (!stage) {
+                return;
+            }
+
+            stage.addEventListener("mouseup", scheduleSelectionLookup);
+            stage.addEventListener("touchend", scheduleSelectionLookup);
+            document.addEventListener("selectionchange", () => {
+                const selected = getCurrentSelectedTextInPdf();
+                if (!selected) {
+                    return;
+                }
+                setSelectionQueryText(selected);
+            });
+        }
+
         async function saveInkNote(options = {}) {
             const quiet = !!options.quiet;
             const allowEmpty = !!options.allowEmpty;
@@ -1510,6 +1702,9 @@
 
             document.getElementById("viewer-title").textContent = label;
             document.getElementById("viewer-subtitle").textContent = session ? `第${session}回議会` : "議会資料";
+            setSelectionQueryText("(未選択)");
+            setSelectionLookupStatus("待機中");
+            renderSelectionLookupResults([]);
             await renderPdf(pdfUrl);
             await loadInkNote();
             await loadTextNote();
@@ -1655,6 +1850,7 @@
         });
         setupInkCanvasEvents();
         setupTagPlacementEvents();
+        setupSelectionLookupEvents();
         updateTagPickModeButton();
         updateInkCanvasVisibility();
 
