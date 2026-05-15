@@ -47,6 +47,7 @@
             <div id="pdf-stage" class="relative">
                 <canvas id="pdf-render-canvas" class="relative z-0 w-full border border-gray-200 rounded-lg bg-gray-50"></canvas>
                 <canvas id="pdf-ink-canvas" class="absolute inset-0 z-10 rounded-lg" style="touch-action: none;"></canvas>
+                <div id="tag-pin-layer" class="absolute inset-0 z-20 pointer-events-none"></div>
             </div>
             <div class="mt-3 flex items-center justify-between gap-3 flex-wrap text-sm">
                 <span id="pdf-page-indicator" class="text-gray-600 font-semibold">ページ 0 / 0</span>
@@ -94,6 +95,40 @@
                             <i class="fas fa-save mr-1"></i>メモ保存
                         </button>
                     </div>
+                </div>
+            </section>
+
+            <section id="tag-panel" class="mt-4 border border-sky-200 bg-sky-50/40 rounded-xl p-4">
+                <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+                    <h2 class="text-sm md:text-base font-bold text-sky-700">
+                        <i class="fas fa-tag mr-1"></i>PDFタグ
+                    </h2>
+                    <span id="tag-status" class="text-xs text-gray-500"></span>
+                </div>
+                <p class="text-xs text-gray-600 mb-2">現在ページ: <span id="tag-current-page" class="font-semibold">1</span></p>
+                <div class="flex items-center gap-2">
+                    <input id="tag-text-input" type="text"
+                        class="w-full border border-sky-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                        placeholder="タグメモを入力して保存（例: 要確認, 重要答弁, 質問候補）">
+                    <button id="tag-pick-mode-btn" type="button" class="px-3 py-2 rounded-lg text-xs border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-semibold whitespace-nowrap">
+                        <i class="fas fa-crosshairs mr-1"></i>位置指定
+                    </button>
+                    <button id="tag-save-btn" type="button" class="px-3 py-2 rounded-lg text-xs bg-sky-600 hover:bg-sky-700 text-white font-semibold whitespace-nowrap">
+                        <i class="fas fa-save mr-1"></i>タグ保存
+                    </button>
+                </div>
+                <div class="mt-4 overflow-x-auto">
+                    <table class="min-w-full text-sm border border-sky-100 rounded-lg overflow-hidden">
+                        <thead class="bg-sky-100/70 text-sky-900">
+                            <tr>
+                                <th class="text-left px-3 py-2 font-semibold">資料名</th>
+                                <th class="text-left px-3 py-2 font-semibold">ページ</th>
+                                <th class="text-left px-3 py-2 font-semibold">タグ内容</th>
+                                <th class="text-left px-3 py-2 font-semibold">更新</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tag-list-body" class="divide-y divide-sky-100 bg-white"></tbody>
+                    </table>
                 </div>
             </section>
         </div>
@@ -166,6 +201,7 @@
         function updatePdfPageIndicator() {
             const indicator = document.getElementById("pdf-page-indicator");
             const indicatorTop = document.getElementById("pdf-page-indicator-top");
+            const tagCurrentPage = document.getElementById("tag-current-page");
             const prevBtn = document.getElementById("pdf-prev-page-btn");
             const nextBtn = document.getElementById("pdf-next-page-btn");
             const prevBtnTop = document.getElementById("pdf-prev-page-btn-top");
@@ -174,6 +210,9 @@
             const text = `ページ ${currentPageNumber} / ${total}`;
             indicator.textContent = text;
             indicatorTop.textContent = text;
+            if (tagCurrentPage) {
+                tagCurrentPage.textContent = String(currentPageNumber);
+            }
             const prevDisabled = !pdfDoc || currentPageNumber <= 1;
             const nextDisabled = !pdfDoc || currentPageNumber >= total;
             prevBtn.disabled = prevDisabled;
@@ -239,6 +278,10 @@
 
         function setMemoStatus(message) {
             document.getElementById("memo-status").textContent = message;
+        }
+
+        function setTagStatus(message) {
+            document.getElementById("tag-status").textContent = message;
         }
 
         function redrawInkCanvas() {
@@ -653,6 +696,147 @@
             setMemoStatus("未保存");
         }
 
+        function buildViewerUrlForTag(tag) {
+            const returnTo = `assembly-documents.html?session=${encodeURIComponent(tag.session_id || "")}`;
+            const url = new URL("assembly-document-viewer.html", window.location.href);
+            url.searchParams.set("session", tag.session_id || "");
+            url.searchParams.set("fileName", tag.document_name || "");
+            url.searchParams.set("label", tag.document_label || tag.document_name || "資料");
+            url.searchParams.set("pdf", tag.pdf_url || "");
+            url.searchParams.set("returnTo", returnTo);
+            return url.toString();
+        }
+
+        function renderTagList(tags) {
+            const tbody = document.getElementById("tag-list-body");
+            tbody.innerHTML = "";
+
+            if (!Array.isArray(tags) || tags.length === 0) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td colspan="4" class="px-3 py-4 text-gray-500">タグはまだありません</td>';
+                tbody.appendChild(tr);
+                return;
+            }
+
+            tags.forEach((tag) => {
+                const tr = document.createElement("tr");
+
+                const nameCell = document.createElement("td");
+                nameCell.className = "px-3 py-2 text-gray-700";
+                nameCell.textContent = tag.document_label || tag.document_name || "-";
+
+                const pageCell = document.createElement("td");
+                pageCell.className = "px-3 py-2 text-gray-700";
+                pageCell.textContent = tag.page_number ? `${tag.page_number}ページ` : "-";
+
+                const tagCell = document.createElement("td");
+                tagCell.className = "px-3 py-2";
+                const openBtn = document.createElement("button");
+                openBtn.type = "button";
+                openBtn.className = "text-left text-sky-700 hover:text-sky-900 hover:underline font-semibold";
+                openBtn.textContent = tag.tag_text || "(タグなし)";
+                openBtn.dataset.viewerUrl = buildViewerUrlForTag(tag);
+                openBtn.title = "クリックで資料を開く";
+                tagCell.appendChild(openBtn);
+
+                const updatedCell = document.createElement("td");
+                updatedCell.className = "px-3 py-2 text-gray-500 text-xs";
+                const dt = tag.updated_at ? new Date(tag.updated_at) : null;
+                updatedCell.textContent = dt
+                    ? dt.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                    : "-";
+
+                tr.appendChild(nameCell);
+                tr.appendChild(pageCell);
+                tr.appendChild(tagCell);
+                tr.appendChild(updatedCell);
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadTagList() {
+            const memberId = getNoteMemberId();
+            if (!memberId) {
+                renderTagList([]);
+                setTagStatus("(ログイン情報なし)");
+                return;
+            }
+
+            setTagStatus("タグ読込中...");
+
+            try {
+                const supabase = getNoteClient();
+                const { data, error } = await supabase
+                    .from("document_tags")
+                    .select("session_id, document_name, document_label, pdf_url, page_number, tag_text, updated_at")
+                    .eq("member_id", memberId)
+                    .order("updated_at", { ascending: false })
+                    .limit(300);
+
+                if (error) {
+                    throw error;
+                }
+
+                renderTagList(data || []);
+                setTagStatus(`${(data || []).length}件`);
+            } catch (error) {
+                console.warn("タグ一覧読込エラー:", error);
+                renderTagList([]);
+                setTagStatus("タグ読込エラー");
+            }
+        }
+
+        async function saveDocumentTag() {
+            const memberId = getNoteMemberId();
+            const input = document.getElementById("tag-text-input");
+            const saveBtn = document.getElementById("tag-save-btn");
+            const tagText = (input.value || "").trim();
+
+            if (!tagText) {
+                setTagStatus("タグ内容を入力してください");
+                return;
+            }
+
+            if (!memberId || !currentSessionId || !currentFileName) {
+                setTagStatus("保存対象の情報が不足しています");
+                return;
+            }
+
+            saveBtn.disabled = true;
+            setTagStatus("タグ保存中...");
+
+            try {
+                const supabase = getNoteClient();
+                const now = new Date().toISOString();
+                const { error } = await supabase
+                    .from("document_tags")
+                    .insert({
+                        member_id: memberId,
+                        session_id: currentSessionId,
+                        document_name: currentFileName,
+                        document_label: getLabel(),
+                        pdf_url: getPdfUrl(),
+                        page_number: currentPageNumber,
+                        tag_text: tagText,
+                        updated_at: now
+                    });
+
+                if (error) {
+                    throw error;
+                }
+
+                input.value = "";
+                const dt = new Date(now).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                setTagStatus(`保存完了: ${dt}`);
+                await loadTagList();
+            } catch (error) {
+                console.warn("タグ保存エラー:", error);
+                setTagStatus("タグ保存エラー");
+            } finally {
+                saveBtn.disabled = false;
+            }
+        }
+
         async function saveInkNote(options = {}) {
             const quiet = !!options.quiet;
             const allowEmpty = !!options.allowEmpty;
@@ -929,6 +1113,7 @@
             await renderPdf(pdfUrl);
             await loadInkNote();
             await loadTextNote();
+            await loadTagList();
         }
 
         document.getElementById("finish-btn").addEventListener("click", closeViewer);
@@ -950,6 +1135,29 @@
         document.getElementById("pdf-next-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
         document.getElementById("memo-save-btn").addEventListener("click", saveTextNote);
         document.getElementById("memo-clear-btn").addEventListener("click", clearTextNote);
+        document.getElementById("tag-save-btn").addEventListener("click", saveDocumentTag);
+        document.getElementById("tag-list-body").addEventListener("click", (event) => {
+            const button = event.target.closest("button[data-viewer-url]");
+            if (!button) {
+                return;
+            }
+
+            const viewerUrl = button.dataset.viewerUrl;
+            if (!viewerUrl) {
+                return;
+            }
+
+            const popup = window.open(viewerUrl, "_blank");
+            if (!popup) {
+                window.location.href = viewerUrl;
+            }
+        });
+        document.getElementById("tag-text-input").addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                saveDocumentTag();
+            }
+        });
         setupInkCanvasEvents();
         updateInkCanvasVisibility();
 
