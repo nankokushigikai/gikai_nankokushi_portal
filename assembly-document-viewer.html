@@ -76,6 +76,20 @@
                 <div id="pdf-text-layer" class="absolute inset-0 z-[5] rounded-lg"></div>
                 <canvas id="pdf-ink-canvas" class="absolute inset-0 z-10 rounded-lg" style="touch-action: none;"></canvas>
                 <div id="tag-pin-layer" class="absolute inset-0 z-20 pointer-events-none"></div>
+                <div id="selection-popover" class="absolute z-30 hidden w-[22rem] max-w-[92vw] bg-white border border-violet-200 rounded-lg shadow-xl p-2.5">
+                    <label for="selection-popover-input" class="block text-[11px] font-semibold text-violet-800">検索語</label>
+                    <div class="mt-1 flex items-center gap-1.5">
+                        <input id="selection-popover-input" type="text" class="flex-1 border border-violet-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="文字を入力して検索">
+                        <button id="selection-popover-search-btn" type="button" class="px-2 py-1.5 rounded border border-violet-300 bg-violet-50 hover:bg-violet-100 text-[11px] text-violet-700">検索</button>
+                    </div>
+                    <p id="selection-popover-status" class="mt-1 text-[11px] text-gray-600"></p>
+                    <div id="selection-popover-results" class="mt-2 max-h-56 overflow-auto space-y-1.5"></div>
+                    <div class="mt-2 flex items-center justify-end gap-2">
+                        <button id="selection-popover-register-btn" type="button" class="px-2 py-1 rounded border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[11px] text-emerald-700">登録</button>
+                        <button id="selection-popover-open-results-btn" type="button" class="px-2 py-1 rounded border border-violet-300 bg-violet-50 hover:bg-violet-100 text-[11px] text-violet-700">下に表示</button>
+                        <button id="selection-popover-close-btn" type="button" class="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-[11px] text-gray-600">閉じる</button>
+                    </div>
+                </div>
                 <div id="tag-pin-popover" class="absolute z-30 hidden w-72 bg-white border border-sky-200 rounded-lg shadow-xl p-3">
                     <p id="tag-pin-popover-text" class="text-sm text-gray-700 whitespace-pre-wrap break-words"></p>
                     <div class="mt-2 flex items-center justify-end gap-2">
@@ -200,12 +214,8 @@
             <div class="p-4 space-y-3">
                 <p id="term-register-status" class="text-xs text-gray-500"></p>
                 <div>
-                    <label for="term-keyword-input" class="text-xs text-gray-600">キーワード（必須）</label>
-                    <input id="term-keyword-input" type="text" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="例: 南海トラフ">
-                </div>
-                <div>
-                    <label for="term-title-input" class="text-xs text-gray-600">タイトル</label>
-                    <input id="term-title-input" type="text" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="例: 南海トラフ地震対策">
+                    <label for="term-keyword-input" class="text-xs text-gray-600">タイトル（必須）</label>
+                    <input id="term-keyword-input" type="text" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="例: 南海トラフ地震対策">
                 </div>
                 <div>
                     <label for="term-body-input" class="text-xs text-gray-600">内容（必須）</label>
@@ -219,6 +229,40 @@
                     <div>
                         <label for="term-source-url-input" class="text-xs text-gray-600">参照URL</label>
                         <input id="term-source-url-input" type="url" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://...">
+                    </div>
+                    <div>
+                        <label for="term-law-url-1-input" class="text-xs text-gray-600">法令URL 1</label>
+                        <input id="term-law-url-1-input" type="url" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://...">
+                    </div>
+                    <div>
+                        <label for="term-law-url-2-input" class="text-xs text-gray-600">法令URL 2</label>
+                        <input id="term-law-url-2-input" type="url" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://...">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="term-law-url-3-input" class="text-xs text-gray-600">法令URL 3</label>
+                        <input id="term-law-url-3-input" type="url" class="mt-1 w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="https://...">
+                    </div>
+                </div>
+
+                <div class="mt-2 border-t border-violet-100 pt-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-semibold text-violet-700">登録済み用語</p>
+                        <div class="flex items-center gap-2">
+                            <span id="term-list-status" class="text-xs text-gray-500"></span>
+                            <button id="term-list-refresh-btn" type="button" class="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-700">再読込</button>
+                        </div>
+                    </div>
+                    <div class="max-h-48 overflow-auto border border-violet-100 rounded-lg">
+                        <table class="min-w-full text-xs bg-white">
+                            <thead class="bg-violet-50 text-violet-800">
+                                <tr>
+                                    <th class="text-left px-2 py-1.5">タイトル</th>
+                                    <th class="text-left px-2 py-1.5">更新</th>
+                                    <th class="text-left px-2 py-1.5">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="term-list-body" class="divide-y divide-violet-100"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -254,6 +298,75 @@
         let activeTagPopoverId = null;
         let latestSelectedText = "";
         let selectionSearchTimer = null;
+        let termLookupRows = [];
+        let lastSelectionRect = null;
+        let suppressSelectionAutoCloseUntil = 0;
+
+        function markSelectionPopoverInteraction() {
+            suppressSelectionAutoCloseUntil = Date.now() + 1200;
+        }
+
+        function shouldSuppressSelectionAutoClose() {
+            return Date.now() < suppressSelectionAutoCloseUntil;
+        }
+
+        function renderSelectionPopoverResults(items) {
+            const container = document.getElementById("selection-popover-results");
+            if (!container) {
+                return;
+            }
+            container.innerHTML = "";
+
+            if (!Array.isArray(items) || items.length === 0) {
+                const empty = document.createElement("p");
+                empty.className = "text-[11px] text-gray-500";
+                empty.textContent = "一致する情報はありません";
+                container.appendChild(empty);
+                return;
+            }
+
+            items.slice(0, 8).forEach((item) => {
+                const card = document.createElement("article");
+                card.className = "border border-violet-100 rounded-md bg-violet-50/40 px-2 py-1.5";
+
+                const title = document.createElement("p");
+                title.className = "text-xs font-semibold text-violet-800";
+                title.textContent = item.title || item.keyword || "関連情報";
+                card.appendChild(title);
+
+                if (item.body) {
+                    const body = document.createElement("p");
+                    body.className = "mt-0.5 text-[11px] text-gray-700 whitespace-pre-wrap";
+                    body.textContent = String(item.body).slice(0, 120);
+                    card.appendChild(body);
+                }
+
+                if (item.source_url) {
+                    const link = document.createElement("a");
+                    link.className = "mt-1 inline-block text-[11px] text-indigo-700 hover:text-indigo-900 hover:underline";
+                    link.href = item.source_url;
+                    link.target = "_blank";
+                    link.rel = "noopener noreferrer";
+                    link.textContent = "参照";
+                    card.appendChild(link);
+                }
+
+                [item.law_url_1, item.law_url_2, item.law_url_3].forEach((lawUrl, idx) => {
+                    if (!lawUrl) {
+                        return;
+                    }
+                    const lawLink = document.createElement("a");
+                    lawLink.className = "mt-1 ml-2 inline-block text-[11px] text-emerald-700 hover:text-emerald-900 hover:underline";
+                    lawLink.href = lawUrl;
+                    lawLink.target = "_blank";
+                    lawLink.rel = "noopener noreferrer";
+                    lawLink.textContent = `法令${idx + 1}`;
+                    card.appendChild(lawLink);
+                });
+
+                container.appendChild(card);
+            });
+        }
 
         const pdfjsLib = window.pdfjsLib;
         if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
@@ -397,12 +510,148 @@
             document.getElementById("term-register-status").textContent = message;
         }
 
+        function setTermListStatus(message) {
+            document.getElementById("term-list-status").textContent = message;
+        }
+
+        function renderTermLookupList(rows) {
+            const tbody = document.getElementById("term-list-body");
+            tbody.innerHTML = "";
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = '<td colspan="3" class="px-2 py-3 text-gray-500">登録データはありません</td>';
+                tbody.appendChild(tr);
+                return;
+            }
+
+            rows.forEach((row) => {
+                const tr = document.createElement("tr");
+
+                const titleCell = document.createElement("td");
+                titleCell.className = "px-2 py-1.5 text-gray-700";
+                titleCell.textContent = row.title || row.keyword || "";
+
+                const updatedCell = document.createElement("td");
+                updatedCell.className = "px-2 py-1.5 text-gray-500";
+                const dt = row.updated_at ? new Date(row.updated_at) : null;
+                updatedCell.textContent = dt
+                    ? dt.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                    : "-";
+
+                const actionCell = document.createElement("td");
+                actionCell.className = "px-2 py-1.5";
+
+                const editBtn = document.createElement("button");
+                editBtn.type = "button";
+                editBtn.className = "mr-1 px-2 py-1 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700";
+                editBtn.textContent = "編集";
+                editBtn.dataset.termAction = "edit";
+                editBtn.dataset.termId = String(row.id || "");
+
+                const delBtn = document.createElement("button");
+                delBtn.type = "button";
+                delBtn.className = "px-2 py-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700";
+                delBtn.textContent = "削除";
+                delBtn.dataset.termAction = "delete";
+                delBtn.dataset.termId = String(row.id || "");
+
+                actionCell.appendChild(editBtn);
+                actionCell.appendChild(delBtn);
+
+                tr.appendChild(titleCell);
+                tr.appendChild(updatedCell);
+                tr.appendChild(actionCell);
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadTermLookupList() {
+            setTermListStatus("読込中...");
+            try {
+                const supabase = getNoteClient();
+                const { data, error } = await supabase
+                    .from("document_text_lookup")
+                    .select("id, keyword, title, body, image_url, source_url, law_url_1, law_url_2, law_url_3, updated_at")
+                    .order("updated_at", { ascending: false })
+                    .limit(200);
+
+                if (error) {
+                    throw error;
+                }
+
+                termLookupRows = data || [];
+                renderTermLookupList(termLookupRows);
+                setTermListStatus(`${termLookupRows.length}件`);
+            } catch (error) {
+                console.warn("用語一覧読込エラー:", error);
+                termLookupRows = [];
+                renderTermLookupList([]);
+                setTermListStatus(`読込エラー: ${formatSupabaseError(error)}`);
+            }
+        }
+
+        function findTermLookupById(id) {
+            if (!Array.isArray(termLookupRows)) {
+                return null;
+            }
+            return termLookupRows.find((row) => Number(row.id) === Number(id)) || null;
+        }
+
+        async function updateTermLookupEntry(entryId, payload) {
+            setTermListStatus("更新中...");
+            try {
+                const supabase = getNoteClient();
+                const now = new Date().toISOString();
+                const { error } = await supabase
+                    .from("document_text_lookup")
+                    .update({
+                        ...payload,
+                        updated_at: now
+                    })
+                    .eq("id", Number(entryId));
+
+                if (error) {
+                    throw error;
+                }
+
+                setTermListStatus("更新しました");
+                await loadTermLookupList();
+            } catch (error) {
+                console.warn("用語更新エラー:", error);
+                setTermListStatus(`更新エラー: ${formatSupabaseError(error)}`);
+            }
+        }
+
+        async function deleteTermLookupEntry(entryId) {
+            setTermListStatus("削除中...");
+            try {
+                const supabase = getNoteClient();
+                const { error } = await supabase
+                    .from("document_text_lookup")
+                    .delete()
+                    .eq("id", Number(entryId));
+
+                if (error) {
+                    throw error;
+                }
+
+                setTermListStatus("削除しました");
+                await loadTermLookupList();
+            } catch (error) {
+                console.warn("用語削除エラー:", error);
+                setTermListStatus(`削除エラー: ${formatSupabaseError(error)}`);
+            }
+        }
+
         function clearTermRegisterForm() {
             document.getElementById("term-keyword-input").value = "";
-            document.getElementById("term-title-input").value = "";
             document.getElementById("term-body-input").value = "";
             document.getElementById("term-image-url-input").value = "";
             document.getElementById("term-source-url-input").value = "";
+            document.getElementById("term-law-url-1-input").value = "";
+            document.getElementById("term-law-url-2-input").value = "";
+            document.getElementById("term-law-url-3-input").value = "";
             setTermRegisterStatus("入力してください");
         }
 
@@ -410,6 +659,7 @@
             const modal = document.getElementById("term-register-modal");
             modal.classList.remove("hidden");
             setTermRegisterStatus("入力してください");
+            loadTermLookupList();
             requestAnimationFrame(() => {
                 document.getElementById("term-keyword-input").focus();
             });
@@ -420,12 +670,33 @@
             modal.classList.add("hidden");
         }
 
+        function openTermRegisterFromSelection(prefillKeyword) {
+            const keyword = normalizeSelectedText(prefillKeyword || "");
+            openTermRegisterModal();
+
+            requestAnimationFrame(() => {
+                const keywordInput = document.getElementById("term-keyword-input");
+                const bodyInput = document.getElementById("term-body-input");
+
+                if (keywordInput && keyword) {
+                    keywordInput.value = keyword;
+                }
+                setTermRegisterStatus("内容を入力して保存してください");
+
+                if (bodyInput) {
+                    bodyInput.focus();
+                }
+            });
+        }
+
         async function saveTermRegisterEntry() {
             const keyword = normalizeSelectedText(document.getElementById("term-keyword-input").value);
-            const title = normalizeSelectedText(document.getElementById("term-title-input").value);
             const body = String(document.getElementById("term-body-input").value || "").trim();
             const imageUrl = normalizeSelectedText(document.getElementById("term-image-url-input").value);
             const sourceUrl = normalizeSelectedText(document.getElementById("term-source-url-input").value);
+            const lawUrl1 = normalizeSelectedText(document.getElementById("term-law-url-1-input").value);
+            const lawUrl2 = normalizeSelectedText(document.getElementById("term-law-url-2-input").value);
+            const lawUrl3 = normalizeSelectedText(document.getElementById("term-law-url-3-input").value);
             const saveBtn = document.getElementById("term-register-save-btn");
 
             if (!keyword) {
@@ -449,10 +720,13 @@
                     .insert({
                         member_id: memberId || null,
                         keyword,
-                        title: title || keyword,
+                        title: keyword,
                         body,
                         image_url: imageUrl || null,
                         source_url: sourceUrl || null,
+                        law_url_1: lawUrl1 || null,
+                        law_url_2: lawUrl2 || null,
+                        law_url_3: lawUrl3 || null,
                         updated_at: now
                     });
 
@@ -462,6 +736,7 @@
 
                 setTermRegisterStatus("保存しました");
                 clearTermRegisterForm();
+                await loadTermLookupList();
             } catch (error) {
                 console.warn("用語登録エラー:", error);
                 setTermRegisterStatus(`保存エラー: ${formatSupabaseError(error)}`);
@@ -528,6 +803,19 @@
                     card.appendChild(link);
                 }
 
+                [item.law_url_1, item.law_url_2, item.law_url_3].forEach((lawUrl, idx) => {
+                    if (!lawUrl) {
+                        return;
+                    }
+                    const lawLink = document.createElement("a");
+                    lawLink.className = "mt-2 ml-2 inline-block text-xs text-emerald-700 hover:text-emerald-900 hover:underline";
+                    lawLink.href = lawUrl;
+                    lawLink.target = "_blank";
+                    lawLink.rel = "noopener noreferrer";
+                    lawLink.textContent = `法令URL${idx + 1}`;
+                    card.appendChild(lawLink);
+                });
+
                 container.appendChild(card);
             });
         }
@@ -537,7 +825,8 @@
             if (!q || q.length < 2) {
                 setSelectionLookupStatus("2文字以上を選択してください");
                 renderSelectionLookupResults([]);
-                return;
+                renderSelectionPopoverResults([]);
+                return { count: 0, error: "too-short", items: [] };
             }
 
             setSelectionLookupStatus("検索中...");
@@ -547,8 +836,8 @@
                 const pattern = `%${escapeLikePattern(q)}%`;
                 const { data, error } = await supabase
                     .from("document_text_lookup")
-                    .select("id, keyword, title, body, image_url, source_url, updated_at")
-                    .or(`keyword.ilike.${pattern},title.ilike.${pattern},body.ilike.${pattern}`)
+                    .select("id, keyword, title, body, image_url, source_url, law_url_1, law_url_2, law_url_3, updated_at")
+                    .or(`title.ilike.${pattern},body.ilike.${pattern}`)
                     .order("updated_at", { ascending: false })
                     .limit(20);
 
@@ -557,11 +846,19 @@
                 }
 
                 renderSelectionLookupResults(data || []);
+                renderSelectionPopoverResults(data || []);
                 setSelectionLookupStatus(`${(data || []).length}件`);
+                return {
+                    count: (data || []).length,
+                    topTitle: data && data[0] ? (data[0].title || data[0].keyword || "") : "",
+                    items: data || []
+                };
             } catch (error) {
                 console.warn("選択文字検索エラー:", error);
                 renderSelectionLookupResults([]);
+                renderSelectionPopoverResults([]);
                 setSelectionLookupStatus(`検索エラー: ${formatSupabaseError(error)}`);
+                return { count: 0, error: formatSupabaseError(error), items: [] };
             }
         }
 
@@ -590,14 +887,48 @@
                 clearTimeout(selectionSearchTimer);
             }
             selectionSearchTimer = setTimeout(async () => {
+                if (shouldSuppressSelectionAutoClose()) {
+                    return;
+                }
                 const selected = getCurrentSelectedTextInPdf();
+                const rect = getCurrentSelectionRectInPdf();
                 if (!selected || selected === latestSelectedText) {
+                    if (!selected) {
+                        closeSelectionPopover();
+                    }
                     return;
                 }
                 latestSelectedText = selected;
                 setSelectionQueryText(selected);
-                await searchSelectionLookup(selected);
+                await runSelectionLookup(selected, rect, true);
             }, 160);
+        }
+
+        async function runSelectionLookup(queryText, rect = null, openAtSelection = false) {
+            const q = normalizeSelectedText(queryText);
+            if (openAtSelection && rect) {
+                openSelectionPopover(rect, q, "検索中...");
+            } else if (!openAtSelection && lastSelectionRect) {
+                openSelectionPopover(lastSelectionRect, q, "検索中...");
+            }
+
+            setSelectionQueryText(q || "(未選択)");
+            const result = await searchSelectionLookup(q);
+            const statusText = result && result.error
+                ? `エラー: ${result.error}`
+                : `${result && Number.isFinite(result.count) ? result.count : 0}件 ${result && result.topTitle ? `(${result.topTitle})` : ""}`;
+
+            if (openAtSelection && rect) {
+                openSelectionPopover(rect, q, statusText);
+            } else if (lastSelectionRect) {
+                openSelectionPopover(lastSelectionRect, q, statusText);
+            } else {
+                const statusEl = document.getElementById("selection-popover-status");
+                if (statusEl) {
+                    statusEl.textContent = statusText;
+                }
+            }
+            return result;
         }
 
         function formatSupabaseError(error) {
@@ -620,6 +951,71 @@
 
         function getTagPinPopover() {
             return document.getElementById("tag-pin-popover");
+        }
+
+        function getSelectionPopover() {
+            return document.getElementById("selection-popover");
+        }
+
+        function closeSelectionPopover() {
+            const popover = getSelectionPopover();
+            if (!popover) {
+                return;
+            }
+            popover.classList.add("hidden");
+            renderSelectionPopoverResults([]);
+            lastSelectionRect = null;
+        }
+
+        function openSelectionPopover(rect, query, statusText) {
+            const popover = getSelectionPopover();
+            const inputEl = document.getElementById("selection-popover-input");
+            const statusEl = document.getElementById("selection-popover-status");
+            const stage = document.getElementById("pdf-stage");
+            if (!popover || !inputEl || !statusEl || !stage || !rect) {
+                return;
+            }
+
+            const stageRect = stage.getBoundingClientRect();
+            const x = rect.left + rect.width / 2 - stageRect.left;
+            const y = rect.top - stageRect.top;
+            const xRatio = Math.max(0.08, Math.min(0.92, x / Math.max(1, stageRect.width)));
+            const yRatio = Math.max(0.05, Math.min(0.95, y / Math.max(1, stageRect.height)));
+
+            if (query && document.activeElement !== inputEl) {
+                inputEl.value = query;
+            }
+            statusEl.textContent = statusText || "";
+            popover.style.left = `${xRatio * 100}%`;
+            popover.style.top = `${yRatio * 100}%`;
+            popover.style.transform = "translate(-50%, -110%)";
+            popover.classList.remove("hidden");
+            lastSelectionRect = rect;
+        }
+
+        function getCurrentSelectionRectInPdf() {
+            const stage = document.getElementById("pdf-stage");
+            const selection = window.getSelection ? window.getSelection() : null;
+            if (!stage || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
+                return null;
+            }
+
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (!rect || (!rect.width && !rect.height)) {
+                return null;
+            }
+
+            const anchorNode = selection.anchorNode;
+            const focusNode = selection.focusNode;
+            if (!anchorNode || !focusNode) {
+                return null;
+            }
+            if (!stage.contains(anchorNode) || !stage.contains(focusNode)) {
+                return null;
+            }
+
+            return rect;
         }
 
         function findTagById(tagId) {
@@ -1528,6 +1924,9 @@
 
         function setupSelectionLookupEvents() {
             const stage = document.getElementById("pdf-stage");
+            const input = document.getElementById("selection-popover-input");
+            const searchBtn = document.getElementById("selection-popover-search-btn");
+            const popover = getSelectionPopover();
             if (!stage) {
                 return;
             }
@@ -1537,10 +1936,59 @@
             document.addEventListener("selectionchange", () => {
                 const selected = getCurrentSelectedTextInPdf();
                 if (!selected) {
+                    if (shouldSuppressSelectionAutoClose()) {
+                        return;
+                    }
+                    const activeEl = document.activeElement;
+                    const inSelectionPopover = !!(activeEl && activeEl.closest && activeEl.closest("#selection-popover"));
+                    if (inSelectionPopover) {
+                        return;
+                    }
+                    closeSelectionPopover();
                     return;
                 }
                 setSelectionQueryText(selected);
+                if (input && document.activeElement !== input) {
+                    input.value = selected;
+                }
             });
+
+            const runManualSearch = async () => {
+                const q = normalizeSelectedText(input ? input.value : "");
+                if (!q) {
+                    return;
+                }
+                latestSelectedText = q;
+                await runSelectionLookup(q, null, false);
+            };
+
+            if (searchBtn) {
+                searchBtn.addEventListener("click", runManualSearch);
+            }
+            if (input) {
+                input.addEventListener("focus", markSelectionPopoverInteraction);
+                input.addEventListener("pointerdown", markSelectionPopoverInteraction);
+                input.addEventListener("keydown", async (event) => {
+                    if (event.key === "Enter") {
+                        event.preventDefault();
+                        await runManualSearch();
+                    }
+                });
+            }
+            if (popover) {
+                popover.addEventListener("pointerdown", (event) => {
+                    markSelectionPopoverInteraction();
+                    event.stopPropagation();
+                });
+                popover.addEventListener("mousedown", (event) => {
+                    markSelectionPopoverInteraction();
+                    event.stopPropagation();
+                });
+                popover.addEventListener("touchstart", (event) => {
+                    markSelectionPopoverInteraction();
+                    event.stopPropagation();
+                }, { passive: true });
+            }
         }
 
         async function saveInkNote(options = {}) {
@@ -1678,6 +2126,10 @@
 
         function setInkTool(tool) {
             const nextTool = tool === "marker" ? "marker" : "pen";
+
+            if (nextTool === "pen") {
+                setInkSizeValue(1);
+            }
 
             if (inkModeEnabled && inkTool === nextTool) {
                 inkModeEnabled = false;
@@ -1859,11 +2311,97 @@
         document.getElementById("term-register-close-btn").addEventListener("click", closeTermRegisterModal);
         document.getElementById("term-register-clear-btn").addEventListener("click", clearTermRegisterForm);
         document.getElementById("term-register-save-btn").addEventListener("click", saveTermRegisterEntry);
+        document.getElementById("term-list-refresh-btn").addEventListener("click", loadTermLookupList);
+        document.getElementById("term-list-body").addEventListener("click", async (event) => {
+            const btn = event.target.closest("button[data-term-action]");
+            if (!btn) {
+                return;
+            }
+
+            const action = btn.dataset.termAction;
+            const entryId = Number(btn.dataset.termId || "");
+            const row = findTermLookupById(entryId);
+            if (!row) {
+                setTermListStatus("対象データが見つかりません");
+                return;
+            }
+
+            if (action === "edit") {
+                const nextTitle = window.prompt("タイトル", row.title || row.keyword || "");
+                if (nextTitle === null) {
+                    return;
+                }
+                const nextBody = window.prompt("内容", row.body || "");
+                if (nextBody === null) {
+                    return;
+                }
+                const nextImageUrl = window.prompt("画像URL", row.image_url || "");
+                if (nextImageUrl === null) {
+                    return;
+                }
+                const nextSourceUrl = window.prompt("参照URL", row.source_url || "");
+                if (nextSourceUrl === null) {
+                    return;
+                }
+                const nextLawUrl1 = window.prompt("法令URL 1", row.law_url_1 || "");
+                if (nextLawUrl1 === null) {
+                    return;
+                }
+                const nextLawUrl2 = window.prompt("法令URL 2", row.law_url_2 || "");
+                if (nextLawUrl2 === null) {
+                    return;
+                }
+                const nextLawUrl3 = window.prompt("法令URL 3", row.law_url_3 || "");
+                if (nextLawUrl3 === null) {
+                    return;
+                }
+
+                const title = normalizeSelectedText(nextTitle);
+                const body = String(nextBody || "").trim();
+                if (!title || !body) {
+                    setTermListStatus("タイトルと内容は必須です");
+                    return;
+                }
+
+                await updateTermLookupEntry(entryId, {
+                    keyword: title,
+                    title,
+                    body,
+                    image_url: normalizeSelectedText(nextImageUrl) || null,
+                    source_url: normalizeSelectedText(nextSourceUrl) || null,
+                    law_url_1: normalizeSelectedText(nextLawUrl1) || null,
+                    law_url_2: normalizeSelectedText(nextLawUrl2) || null,
+                    law_url_3: normalizeSelectedText(nextLawUrl3) || null
+                });
+                return;
+            }
+
+            if (action === "delete") {
+                const ok = window.confirm("この用語データを削除します。よろしいですか？");
+                if (!ok) {
+                    return;
+                }
+                await deleteTermLookupEntry(entryId);
+            }
+        });
         document.getElementById("term-register-modal").addEventListener("click", (event) => {
             if (event.target.id === "term-register-modal") {
                 closeTermRegisterModal();
             }
         });
+        document.getElementById("selection-popover-register-btn").addEventListener("click", () => {
+            const input = document.getElementById("selection-popover-input");
+            const q = normalizeSelectedText(input ? input.value : "");
+            markSelectionPopoverInteraction();
+            openTermRegisterFromSelection(q || latestSelectedText || getCurrentSelectedTextInPdf());
+        });
+        document.getElementById("selection-popover-open-results-btn").addEventListener("click", () => {
+            const panel = document.getElementById("selection-lookup-panel");
+            if (panel) {
+                panel.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+        });
+        document.getElementById("selection-popover-close-btn").addEventListener("click", closeSelectionPopover);
         document.getElementById("tag-list-btn-top").addEventListener("click", scrollToTagListPanel);
         document.getElementById("tag-list-btn").addEventListener("click", scrollToTagListPanel);
         const toggleTagMode = () => setTagPlacementMode(!tagPlacementMode);
@@ -1970,8 +2508,12 @@
         document.getElementById("pdf-stage").addEventListener("click", (event) => {
             const pin = event.target.closest("#tag-pin-layer .pointer-events-auto");
             const popover = event.target.closest("#tag-pin-popover");
+            const selectionPopover = event.target.closest("#selection-popover");
             if (pin || popover) {
                 return;
+            }
+            if (!selectionPopover && !getCurrentSelectedTextInPdf()) {
+                closeSelectionPopover();
             }
             closeTagPinPopover();
         });

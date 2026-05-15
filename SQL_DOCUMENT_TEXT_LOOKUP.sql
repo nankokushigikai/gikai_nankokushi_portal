@@ -1,6 +1,6 @@
 -- ----------------------------------------------------------------------
 -- document_text_lookup テーブル（PDF文字選択の関連情報辞書）
--- PDF上で選択した短い文字列に対する説明文・画像・参照URLを保持する。
+-- PDF上で選択した短い文字列に対する説明文・画像・参照URL・法令URLを保持する。
 -- ----------------------------------------------------------------------
 create table if not exists public.document_text_lookup (
     id bigserial primary key,
@@ -10,9 +10,22 @@ create table if not exists public.document_text_lookup (
     body text not null default '',
     image_url text,
     source_url text,
+    law_url_1 text,
+    law_url_2 text,
+    law_url_3 text,
     updated_at timestamptz not null default now(),
     created_at timestamptz not null default now()
 );
+
+-- 既存テーブルへ差分適用
+alter table public.document_text_lookup add column if not exists law_url_1 text;
+alter table public.document_text_lookup add column if not exists law_url_2 text;
+alter table public.document_text_lookup add column if not exists law_url_3 text;
+
+-- タイトル未設定データを補完（タイトル=キーワード運用）
+update public.document_text_lookup
+set title = keyword
+where coalesce(nullif(title, ''), '') = '';
 
 create index if not exists document_text_lookup_keyword_idx
     on public.document_text_lookup (keyword);
