@@ -6,6 +6,26 @@
     <title>議案PDFビューア | 南国市議会DXポータル</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        #pdf-text-layer {
+            line-height: 1;
+            user-select: text;
+        }
+
+        #pdf-text-layer span,
+        #pdf-text-layer br {
+            color: transparent;
+            position: absolute;
+            transform-origin: 0 0;
+            white-space: pre;
+            cursor: text;
+        }
+
+        #pdf-text-layer .highlight {
+            background: rgba(255, 217, 102, 0.6);
+            border-radius: 2px;
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
     <header class="bg-indigo-700 text-white shadow-lg p-4">
@@ -23,6 +43,12 @@
             <div class="mb-3 flex items-center justify-between gap-3 flex-wrap text-sm">
                 <span id="pdf-page-indicator-top" class="text-gray-600 font-semibold">ページ 0 / 0</span>
                 <div id="ink-toolbar-top" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
+                    <button id="tag-list-btn-top" type="button" class="ml-1 px-3 py-2 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-semibold whitespace-nowrap">
+                        <i class="fas fa-list mr-1"></i>タグ一覧
+                    </button>
+                    <button id="tag-pick-mode-btn-top" type="button" class="ml-1 mr-3 px-3 py-2 rounded-lg border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-semibold whitespace-nowrap">
+                        <i class="fas fa-tag mr-1"></i>タグ
+                    </button>
                     <div class="flex items-center gap-1">
                         <button id="ink-tool-pen-btn-top" type="button" class="px-2.5 py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold">ペン</button>
                         <button id="ink-tool-marker-btn-top" type="button" class="px-2.5 py-1.5 rounded border border-gray-300 bg-white text-gray-700 font-semibold">マーカー</button>
@@ -46,12 +72,35 @@
             </div>
             <div id="pdf-stage" class="relative">
                 <canvas id="pdf-render-canvas" class="relative z-0 w-full border border-gray-200 rounded-lg bg-gray-50"></canvas>
+                <div id="pdf-text-layer" class="absolute inset-0 z-5 rounded-lg"></div>
                 <canvas id="pdf-ink-canvas" class="absolute inset-0 z-10 rounded-lg" style="touch-action: none;"></canvas>
                 <div id="tag-pin-layer" class="absolute inset-0 z-20 pointer-events-none"></div>
+                <div id="tag-pin-popover" class="absolute z-30 hidden w-72 bg-white border border-sky-200 rounded-lg shadow-xl p-3">
+                    <p id="tag-pin-popover-text" class="text-sm text-gray-700 whitespace-pre-wrap break-words"></p>
+                    <div class="mt-2 flex items-center justify-end gap-2">
+                        <button id="tag-pin-edit-btn" type="button" class="px-2.5 py-1.5 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs">修正</button>
+                        <button id="tag-pin-delete-btn" type="button" class="px-2.5 py-1.5 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs">削除</button>
+                        <button id="tag-pin-close-btn" type="button" class="px-2.5 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 text-xs">閉じる</button>
+                    </div>
+                </div>
+                <div id="tag-float-box" class="absolute z-30 hidden w-72 bg-white border border-sky-200 rounded-lg shadow-xl p-3">
+                    <p class="text-xs text-sky-700 font-semibold mb-2">タグ内容を入力</p>
+                    <input id="tag-float-input" type="text" class="w-full border border-sky-200 rounded px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" placeholder="例: 要確認、質問候補">
+                    <div class="mt-2 flex items-center justify-end gap-2">
+                        <button id="tag-float-cancel-btn" type="button" class="px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-700">取消</button>
+                        <button id="tag-float-save-btn" type="button" class="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold">保存</button>
+                    </div>
+                </div>
             </div>
             <div class="mt-3 flex items-center justify-between gap-3 flex-wrap text-sm">
                 <span id="pdf-page-indicator" class="text-gray-600 font-semibold">ページ 0 / 0</span>
                 <div id="ink-toolbar" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
+                    <button id="tag-list-btn" type="button" class="ml-1 px-3 py-2 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-semibold whitespace-nowrap">
+                        <i class="fas fa-list mr-1"></i>タグ一覧
+                    </button>
+                    <button id="tag-pick-mode-btn" type="button" class="ml-1 mr-3 px-3 py-2 rounded-lg border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-semibold whitespace-nowrap">
+                        <i class="fas fa-tag mr-1"></i>タグ
+                    </button>
                     <div class="flex items-center gap-1">
                         <button id="ink-tool-pen-btn" type="button" class="px-2.5 py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold">ペン</button>
                         <button id="ink-tool-marker-btn" type="button" class="px-2.5 py-1.5 rounded border border-gray-300 bg-white text-gray-700 font-semibold">マーカー</button>
@@ -106,17 +155,7 @@
                     <span id="tag-status" class="text-xs text-gray-500"></span>
                 </div>
                 <p class="text-xs text-gray-600 mb-2">現在ページ: <span id="tag-current-page" class="font-semibold">1</span></p>
-                <div class="flex items-center gap-2">
-                    <input id="tag-text-input" type="text"
-                        class="w-full border border-sky-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                        placeholder="タグメモを入力して保存（例: 要確認, 重要答弁, 質問候補）">
-                    <button id="tag-pick-mode-btn" type="button" class="px-3 py-2 rounded-lg text-xs border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-semibold whitespace-nowrap">
-                        <i class="fas fa-crosshairs mr-1"></i>位置指定
-                    </button>
-                    <button id="tag-save-btn" type="button" class="px-3 py-2 rounded-lg text-xs bg-sky-600 hover:bg-sky-700 text-white font-semibold whitespace-nowrap">
-                        <i class="fas fa-save mr-1"></i>タグ保存
-                    </button>
-                </div>
+                <p class="text-xs text-sky-700 mb-3">タグボタンを押してから、PDF上の該当箇所をタップ/クリックすると入力ボックスが表示されます。</p>
                 <div class="mt-4 overflow-x-auto">
                     <table class="min-w-full text-sm border border-sky-100 rounded-lg overflow-hidden">
                         <thead class="bg-sky-100/70 text-sky-900">
@@ -125,11 +164,27 @@
                                 <th class="text-left px-3 py-2 font-semibold">ページ</th>
                                 <th class="text-left px-3 py-2 font-semibold">タグ内容</th>
                                 <th class="text-left px-3 py-2 font-semibold">更新</th>
+                                <th class="text-left px-3 py-2 font-semibold">操作</th>
                             </tr>
                         </thead>
                         <tbody id="tag-list-body" class="divide-y divide-sky-100 bg-white"></tbody>
                     </table>
                 </div>
+            </section>
+
+            <section id="selection-lookup-panel" class="mt-4 border border-violet-200 bg-violet-50/40 rounded-xl p-4">
+                <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+                    <h2 class="text-sm md:text-base font-bold text-violet-700">
+                        <i class="fas fa-magnifying-glass mr-1"></i>文字選択検索
+                    </h2>
+                    <span id="selection-lookup-status" class="text-xs text-gray-500"></span>
+                </div>
+                <p class="text-xs text-violet-700 mb-2">PDFで短い文字を選択すると、関連情報を検索します。</p>
+                <div class="mb-3 text-sm">
+                    <span class="text-gray-500">選択文字:</span>
+                    <span id="selection-query-text" class="font-semibold text-violet-800 ml-1">(未選択)</span>
+                </div>
+                <div id="selection-lookup-results" class="space-y-2"></div>
             </section>
         </div>
     </main>
@@ -153,6 +208,10 @@
         let currentInkStroke = null;
         let currentSessionId = "";
         let currentFileName = "";
+        let tagPlacementMode = false;
+        let tagRows = [];
+        let pendingTagPosition = null;
+        let activeTagPopoverId = null;
 
         const pdfjsLib = window.pdfjsLib;
         if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
@@ -284,6 +343,185 @@
             document.getElementById("tag-status").textContent = message;
         }
 
+        function formatSupabaseError(error) {
+            if (!error) {
+                return "不明なエラー";
+            }
+            if (typeof error === "string") {
+                return error;
+            }
+            return error.message || error.details || error.hint || "不明なエラー";
+        }
+
+        function getTagPinLayer() {
+            return document.getElementById("tag-pin-layer");
+        }
+
+        function getTagFloatBox() {
+            return document.getElementById("tag-float-box");
+        }
+
+        function getTagPinPopover() {
+            return document.getElementById("tag-pin-popover");
+        }
+
+        function findTagById(tagId) {
+            if (!Array.isArray(tagRows)) {
+                return null;
+            }
+            return tagRows.find((tag) => Number(tag.id) === Number(tagId)) || null;
+        }
+
+        function closeTagPinPopover() {
+            const popover = getTagPinPopover();
+            if (!popover) {
+                return;
+            }
+            popover.classList.add("hidden");
+            activeTagPopoverId = null;
+        }
+
+        function openTagPinPopover(tag, x, y) {
+            const popover = getTagPinPopover();
+            const text = document.getElementById("tag-pin-popover-text");
+            if (!popover || !text || !tag) {
+                return;
+            }
+
+            text.textContent = tag.tag_text || "(タグなし)";
+            popover.dataset.tagId = String(tag.id || "");
+            popover.dataset.tagText = String(tag.tag_text || "");
+
+            const left = Math.max(10, Math.min(90, Number(x || 0.5) * 100));
+            const top = Math.max(10, Math.min(90, Number(y || 0.5) * 100));
+            popover.style.left = `${left}%`;
+            popover.style.top = `${top}%`;
+            popover.style.transform = "translate(-50%, -110%)";
+            popover.classList.remove("hidden");
+            activeTagPopoverId = Number(tag.id) || null;
+        }
+
+        function updateTagPickModeButton() {
+            const buttonBottom = document.getElementById("tag-pick-mode-btn");
+            const buttonTop = document.getElementById("tag-pick-mode-btn-top");
+            [buttonBottom, buttonTop].forEach((button) => {
+                if (!button) {
+                    return;
+                }
+                if (tagPlacementMode) {
+                    button.className = "ml-1 mr-3 px-3 py-2 rounded-lg border border-sky-500 bg-sky-600 text-white font-semibold whitespace-nowrap";
+                } else {
+                    button.className = "ml-1 mr-3 px-3 py-2 rounded-lg border border-sky-300 bg-white hover:bg-sky-50 text-sky-700 font-semibold whitespace-nowrap";
+                }
+            });
+        }
+
+        function closeTagFloatBox() {
+            const box = getTagFloatBox();
+            const input = document.getElementById("tag-float-input");
+            if (box) {
+                box.classList.add("hidden");
+            }
+            if (input) {
+                input.value = "";
+            }
+            pendingTagPosition = null;
+        }
+
+        function openTagFloatBox(position) {
+            const box = getTagFloatBox();
+            const input = document.getElementById("tag-float-input");
+            if (!box || !input) {
+                return;
+            }
+
+            pendingTagPosition = position;
+            box.classList.remove("hidden");
+            const left = Math.max(12, Math.min(88, Number(position.x || 0.5) * 100));
+            const top = Math.max(8, Math.min(88, Number(position.y || 0.5) * 100));
+            box.style.left = `${left}%`;
+            box.style.top = `${top}%`;
+            box.style.transform = "translate(-50%, -100%)";
+
+            requestAnimationFrame(() => input.focus());
+        }
+
+        function setTagPlacementMode(enabled) {
+            tagPlacementMode = !!enabled;
+            if (!tagPlacementMode) {
+                closeTagFloatBox();
+            }
+            if (tagPlacementMode && inkModeEnabled) {
+                inkModeEnabled = false;
+                updateInkCanvasVisibility();
+                redrawInkCanvas();
+                setInkStatus("描画モードOFF");
+            }
+            const canvas = getPdfCanvas();
+            if (canvas) {
+                canvas.style.cursor = tagPlacementMode ? "crosshair" : "default";
+            }
+            updateTagPickModeButton();
+            if (tagPlacementMode) {
+                setTagStatus("位置指定ON: PDFの文字付近をタップ/クリックしてください");
+            } else {
+                setTagStatus("位置指定OFF");
+            }
+        }
+
+        function scrollToTagListPanel() {
+            const panel = document.getElementById("tag-panel");
+            if (!panel) {
+                return;
+            }
+            panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        function syncTagPinLayerSize() {
+            const pdfCanvas = getPdfCanvas();
+            const layer = getTagPinLayer();
+            if (!pdfCanvas || !layer) {
+                return;
+            }
+            layer.style.width = `${Math.floor(pdfCanvas.clientWidth || 0)}px`;
+            layer.style.height = `${Math.floor(pdfCanvas.clientHeight || 0)}px`;
+        }
+
+        function renderTagPinsForCurrentPage() {
+            const layer = getTagPinLayer();
+            if (!layer) {
+                return;
+            }
+            layer.innerHTML = "";
+            closeTagPinPopover();
+
+            const currentTags = (Array.isArray(tagRows) ? tagRows : []).filter((tag) =>
+                tag.session_id === currentSessionId
+                && tag.document_name === currentFileName
+                && Number(tag.page_number || 0) === Number(currentPageNumber)
+                && Number.isFinite(Number(tag.pos_x))
+                && Number.isFinite(Number(tag.pos_y))
+            );
+
+            currentTags.forEach((tag, index) => {
+                const x = Math.max(0, Math.min(1, Number(tag.pos_x)));
+                const y = Math.max(0, Math.min(1, Number(tag.pos_y)));
+                const pin = document.createElement("div");
+                pin.className = "absolute text-sky-700 bg-white/90 border border-sky-200 rounded px-1 py-0.5 shadow pointer-events-auto cursor-pointer";
+                pin.style.left = `${x * 100}%`;
+                pin.style.top = `${y * 100}%`;
+                pin.style.transform = "translate(-50%, -50%)";
+                pin.title = `タグ${index + 1}: ${tag.tag_text || ""}`;
+                pin.innerHTML = '<i class="fas fa-pen text-[10px]"></i>';
+                pin.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openTagPinPopover(tag, x, y);
+                });
+                layer.appendChild(pin);
+            });
+        }
+
         function redrawInkCanvas() {
             const canvas = getInkCanvas();
             const ctx = getInkContext();
@@ -344,6 +582,8 @@
             const ctx = getInkContext();
             ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
             redrawInkCanvas();
+            syncTagPinLayerSize();
+            renderTagPinsForCurrentPage();
         }
 
         function updateInkCanvasVisibility() {
@@ -556,6 +796,7 @@
             loadCurrentPageInkFromStore();
             updateInkCanvasVisibility();
             redrawInkCanvas();
+            renderTagPinsForCurrentPage();
             setInkStatus(`表示中: ${currentPageNumber}ページ`);
         }
 
@@ -704,6 +945,13 @@
             url.searchParams.set("label", tag.document_label || tag.document_name || "資料");
             url.searchParams.set("pdf", tag.pdf_url || "");
             url.searchParams.set("returnTo", returnTo);
+            if (tag.page_number) {
+                url.searchParams.set("openPage", String(tag.page_number));
+            }
+            if (Number.isFinite(Number(tag.pos_x)) && Number.isFinite(Number(tag.pos_y))) {
+                url.searchParams.set("focusX", String(tag.pos_x));
+                url.searchParams.set("focusY", String(tag.pos_y));
+            }
             return url.toString();
         }
 
@@ -713,7 +961,7 @@
 
             if (!Array.isArray(tags) || tags.length === 0) {
                 const tr = document.createElement("tr");
-                tr.innerHTML = '<td colspan="4" class="px-3 py-4 text-gray-500">タグはまだありません</td>';
+                tr.innerHTML = '<td colspan="5" class="px-3 py-4 text-gray-500">タグはまだありません</td>';
                 tbody.appendChild(tr);
                 return;
             }
@@ -746,12 +994,96 @@
                     ? dt.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
                     : "-";
 
+                const actionCell = document.createElement("td");
+                actionCell.className = "px-3 py-2";
+                const editBtn = document.createElement("button");
+                editBtn.type = "button";
+                editBtn.className = "mr-2 px-2 py-1 text-xs rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700";
+                editBtn.textContent = "編集";
+                editBtn.dataset.tagAction = "edit";
+                editBtn.dataset.tagId = String(tag.id || "");
+                editBtn.dataset.tagText = String(tag.tag_text || "");
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.type = "button";
+                deleteBtn.className = "px-2 py-1 text-xs rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700";
+                deleteBtn.textContent = "削除";
+                deleteBtn.dataset.tagAction = "delete";
+                deleteBtn.dataset.tagId = String(tag.id || "");
+
+                actionCell.appendChild(editBtn);
+                actionCell.appendChild(deleteBtn);
+
                 tr.appendChild(nameCell);
                 tr.appendChild(pageCell);
                 tr.appendChild(tagCell);
                 tr.appendChild(updatedCell);
+                tr.appendChild(actionCell);
                 tbody.appendChild(tr);
             });
+        }
+
+        async function updateDocumentTagText(tagId, tagText) {
+            const memberId = getNoteMemberId();
+            const text = (tagText || "").trim();
+            if (!memberId || !Number.isFinite(Number(tagId)) || !text) {
+                return false;
+            }
+
+            setTagStatus("タグ更新中...");
+            try {
+                const supabase = getNoteClient();
+                const now = new Date().toISOString();
+                const { error } = await supabase
+                    .from("document_tags")
+                    .update({
+                        tag_text: text,
+                        updated_at: now
+                    })
+                    .eq("id", Number(tagId))
+                    .eq("member_id", memberId);
+
+                if (error) {
+                    throw error;
+                }
+
+                setTagStatus("タグを更新しました");
+                await loadTagList();
+                return true;
+            } catch (error) {
+                console.warn("タグ更新エラー:", error);
+                setTagStatus(`タグ更新エラー: ${formatSupabaseError(error)}`);
+                return false;
+            }
+        }
+
+        async function deleteDocumentTag(tagId) {
+            const memberId = getNoteMemberId();
+            if (!memberId || !Number.isFinite(Number(tagId))) {
+                return false;
+            }
+
+            setTagStatus("タグ削除中...");
+            try {
+                const supabase = getNoteClient();
+                const { error } = await supabase
+                    .from("document_tags")
+                    .delete()
+                    .eq("id", Number(tagId))
+                    .eq("member_id", memberId);
+
+                if (error) {
+                    throw error;
+                }
+
+                setTagStatus("タグを削除しました");
+                await loadTagList();
+                return true;
+            } catch (error) {
+                console.warn("タグ削除エラー:", error);
+                setTagStatus(`タグ削除エラー: ${formatSupabaseError(error)}`);
+                return false;
+            }
         }
 
         async function loadTagList() {
@@ -768,7 +1100,7 @@
                 const supabase = getNoteClient();
                 const { data, error } = await supabase
                     .from("document_tags")
-                    .select("session_id, document_name, document_label, pdf_url, page_number, tag_text, updated_at")
+                    .select("id, session_id, document_name, document_label, pdf_url, page_number, tag_text, pos_x, pos_y, updated_at")
                     .eq("member_id", memberId)
                     .order("updated_at", { ascending: false })
                     .limit(300);
@@ -777,22 +1109,25 @@
                     throw error;
                 }
 
-                renderTagList(data || []);
+                tagRows = data || [];
+                renderTagList(tagRows);
+                renderTagPinsForCurrentPage();
                 setTagStatus(`${(data || []).length}件`);
             } catch (error) {
                 console.warn("タグ一覧読込エラー:", error);
+                tagRows = [];
                 renderTagList([]);
-                setTagStatus("タグ読込エラー");
+                renderTagPinsForCurrentPage();
+                setTagStatus(`タグ読込エラー: ${formatSupabaseError(error)}`);
             }
         }
 
-        async function saveDocumentTag() {
+        async function saveDocumentTag(tagText, position = null) {
             const memberId = getNoteMemberId();
-            const input = document.getElementById("tag-text-input");
-            const saveBtn = document.getElementById("tag-save-btn");
-            const tagText = (input.value || "").trim();
+            const saveBtn = document.getElementById("tag-float-save-btn");
+            const text = (tagText || "").trim();
 
-            if (!tagText) {
+            if (!text) {
                 setTagStatus("タグ内容を入力してください");
                 return;
             }
@@ -802,13 +1137,15 @@
                 return;
             }
 
-            saveBtn.disabled = true;
+            if (saveBtn) {
+                saveBtn.disabled = true;
+            }
             setTagStatus("タグ保存中...");
 
             try {
                 const supabase = getNoteClient();
                 const now = new Date().toISOString();
-                const { error } = await supabase
+                let { error } = await supabase
                     .from("document_tags")
                     .insert({
                         member_id: memberId,
@@ -817,24 +1154,84 @@
                         document_label: getLabel(),
                         pdf_url: getPdfUrl(),
                         page_number: currentPageNumber,
-                        tag_text: tagText,
+                        tag_text: text,
+                        pos_x: position && Number.isFinite(Number(position.x)) ? Number(position.x) : null,
+                        pos_y: position && Number.isFinite(Number(position.y)) ? Number(position.y) : null,
                         updated_at: now
                     });
+
+                // 旧スキーマ互換: pos_x/pos_y 列未追加の場合は座標なしで再試行
+                if (error && /pos_x|pos_y|column/i.test(formatSupabaseError(error))) {
+                    const retry = await supabase
+                        .from("document_tags")
+                        .insert({
+                            member_id: memberId,
+                            session_id: currentSessionId,
+                            document_name: currentFileName,
+                            document_label: getLabel(),
+                            pdf_url: getPdfUrl(),
+                            page_number: currentPageNumber,
+                            tag_text: text,
+                            updated_at: now
+                        });
+                    error = retry.error;
+                    if (!error) {
+                        setTagStatus("保存完了（位置情報は未反映。SQL_DOCUMENT_TAGS.sql を再実行してください）");
+                    }
+                }
 
                 if (error) {
                     throw error;
                 }
 
-                input.value = "";
                 const dt = new Date(now).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                setTagPlacementMode(false);
                 setTagStatus(`保存完了: ${dt}`);
                 await loadTagList();
+                return true;
             } catch (error) {
                 console.warn("タグ保存エラー:", error);
-                setTagStatus("タグ保存エラー");
+                setTagStatus(`タグ保存エラー: ${formatSupabaseError(error)}`);
+                return false;
             } finally {
-                saveBtn.disabled = false;
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                }
             }
+        }
+
+        function getPointerPositionOnPdf(event) {
+            const canvas = getPdfCanvas();
+            const rect = canvas.getBoundingClientRect();
+            if (!rect.width || !rect.height) {
+                return null;
+            }
+
+            const x = (event.clientX - rect.left) / rect.width;
+            const y = (event.clientY - rect.top) / rect.height;
+            return {
+                x: Math.max(0, Math.min(1, x)),
+                y: Math.max(0, Math.min(1, y))
+            };
+        }
+
+        function setupTagPlacementEvents() {
+            const canvas = getPdfCanvas();
+            canvas.addEventListener("click", (event) => {
+                if (!tagPlacementMode) {
+                    return;
+                }
+                if (inkModeEnabled) {
+                    setTagStatus("手書きモード中は位置指定できません（手書きOFFで指定してください）");
+                    return;
+                }
+
+                const position = getPointerPositionOnPdf(event);
+                if (!position) {
+                    return;
+                }
+                openTagFloatBox(position);
+            });
         }
 
         async function saveInkNote(options = {}) {
@@ -1104,6 +1501,9 @@
             const label = getLabel();
             const session = getParam("session");
             const fileName = getParam("fileName");
+            const openPage = Number(getParam("openPage") || "0");
+            const focusX = Number(getParam("focusX") || "");
+            const focusY = Number(getParam("focusY") || "");
 
             currentSessionId = session;
             currentFileName = fileName;
@@ -1114,6 +1514,13 @@
             await loadInkNote();
             await loadTextNote();
             await loadTagList();
+
+            if (openPage > 0) {
+                await goToPdfPage(openPage);
+            }
+            if (Number.isFinite(focusX) && Number.isFinite(focusY)) {
+                setTagStatus(`位置付きタグを表示中（${currentPageNumber}ページ）`);
+            }
         }
 
         document.getElementById("finish-btn").addEventListener("click", closeViewer);
@@ -1135,8 +1542,84 @@
         document.getElementById("pdf-next-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
         document.getElementById("memo-save-btn").addEventListener("click", saveTextNote);
         document.getElementById("memo-clear-btn").addEventListener("click", clearTextNote);
-        document.getElementById("tag-save-btn").addEventListener("click", saveDocumentTag);
+        document.getElementById("tag-list-btn-top").addEventListener("click", scrollToTagListPanel);
+        document.getElementById("tag-list-btn").addEventListener("click", scrollToTagListPanel);
+        const toggleTagMode = () => setTagPlacementMode(!tagPlacementMode);
+        document.getElementById("tag-pick-mode-btn-top").addEventListener("click", toggleTagMode);
+        document.getElementById("tag-pick-mode-btn").addEventListener("click", toggleTagMode);
+        document.getElementById("tag-float-cancel-btn").addEventListener("click", () => {
+            closeTagFloatBox();
+            setTagPlacementMode(false);
+        });
+        document.getElementById("tag-float-save-btn").addEventListener("click", async () => {
+            const input = document.getElementById("tag-float-input");
+            const saved = await saveDocumentTag(input.value, pendingTagPosition);
+            if (saved) {
+                closeTagFloatBox();
+            }
+        });
+        document.getElementById("tag-pin-edit-btn").addEventListener("click", async () => {
+            const popover = getTagPinPopover();
+            const tagId = Number((popover && popover.dataset.tagId) || "");
+            const tag = findTagById(tagId);
+            if (!tag) {
+                setTagStatus("編集対象のタグが見つかりません");
+                return;
+            }
+
+            const nextText = window.prompt("タグ内容を編集してください", tag.tag_text || "");
+            if (nextText === null) {
+                return;
+            }
+            const ok = await updateDocumentTagText(tagId, nextText);
+            if (ok) {
+                closeTagPinPopover();
+            }
+        });
+        document.getElementById("tag-pin-delete-btn").addEventListener("click", async () => {
+            const popover = getTagPinPopover();
+            const tagId = Number((popover && popover.dataset.tagId) || "");
+            if (!Number.isFinite(tagId)) {
+                setTagStatus("削除対象のタグが見つかりません");
+                return;
+            }
+
+            const ok = window.confirm("このタグを削除します。よろしいですか？");
+            if (!ok) {
+                return;
+            }
+            const deleted = await deleteDocumentTag(tagId);
+            if (deleted) {
+                closeTagPinPopover();
+            }
+        });
+        document.getElementById("tag-pin-close-btn").addEventListener("click", closeTagPinPopover);
         document.getElementById("tag-list-body").addEventListener("click", (event) => {
+            const actionBtn = event.target.closest("button[data-tag-action]");
+            if (actionBtn) {
+                const action = actionBtn.dataset.tagAction;
+                const tagId = Number(actionBtn.dataset.tagId || "");
+
+                if (action === "edit") {
+                    const currentText = actionBtn.dataset.tagText || "";
+                    const nextText = window.prompt("タグ内容を編集してください", currentText);
+                    if (nextText === null) {
+                        return;
+                    }
+                    updateDocumentTagText(tagId, nextText);
+                    return;
+                }
+
+                if (action === "delete") {
+                    const ok = window.confirm("このタグを削除します。よろしいですか？");
+                    if (!ok) {
+                        return;
+                    }
+                    deleteDocumentTag(tagId);
+                    return;
+                }
+            }
+
             const button = event.target.closest("button[data-viewer-url]");
             if (!button) {
                 return;
@@ -1152,13 +1635,27 @@
                 window.location.href = viewerUrl;
             }
         });
-        document.getElementById("tag-text-input").addEventListener("keydown", (event) => {
+        document.getElementById("tag-float-input").addEventListener("keydown", async (event) => {
             if (event.key === "Enter") {
                 event.preventDefault();
-                saveDocumentTag();
+                const input = document.getElementById("tag-float-input");
+                const saved = await saveDocumentTag(input.value, pendingTagPosition);
+                if (saved) {
+                    closeTagFloatBox();
+                }
             }
         });
+        document.getElementById("pdf-stage").addEventListener("click", (event) => {
+            const pin = event.target.closest("#tag-pin-layer .pointer-events-auto");
+            const popover = event.target.closest("#tag-pin-popover");
+            if (pin || popover) {
+                return;
+            }
+            closeTagPinPopover();
+        });
         setupInkCanvasEvents();
+        setupTagPlacementEvents();
+        updateTagPickModeButton();
         updateInkCanvasVisibility();
 
         portalAuth.init({
