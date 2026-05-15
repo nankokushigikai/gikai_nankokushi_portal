@@ -1309,6 +1309,15 @@ ${inputText}`;
         setSelectOptions("update-status", STATUS_OPTIONS);
         setSelectOptions("update-evaluation", EVALUATION_OPTIONS);
 
+        function handleInitialOpenMode() {
+            const openMode = (new URLSearchParams(window.location.search).get("open") || "").trim().toLowerCase();
+            if (openMode === "create") {
+                openTrackerModal(null);
+            } else if (openMode === "bulk") {
+                openBulkModal();
+            }
+        }
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -1316,6 +1325,7 @@ ${inputText}`;
             onReady: () => {
                 loadTrackers();
                 loadGeminiKey();
+                handleInitialOpenMode();
             }
         });
 

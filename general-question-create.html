@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一般質問作成 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-teal-50 text-gray-800">
+    <header class="bg-teal-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold tracking-wider hover:text-teal-100">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <span class="text-sm">一般質問作成</span>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6">
+            <a href="index.html" class="text-teal-700 hover:text-teal-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>ポータルトップに戻る
+            </a>
+        </div>
+
+        <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-lg mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold mb-2">一般質問作成</h1>
+            <p class="text-teal-50">一般質問を作る場合こちらのサイトを活用しましょう</p>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <article class="bg-white p-6 rounded-xl shadow-sm border-t-4 border-emerald-500 hover:shadow-md transition">
+                <div class="text-emerald-500 text-3xl mb-4"><i class="fas fa-box-open"></i></div>
+                <h2 class="text-lg font-bold mb-2">質問の素材</h2>
+                <p class="text-sm text-gray-500 mb-4">論点整理や背景調査のために、AI支援とナレッジを活用します。</p>
+                <div class="flex flex-wrap gap-2">
+                    <a href="ai-assistant.html" class="inline-block bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-emerald-100">AIで素材整理</a>
+                    <a href="knowledge.html" class="inline-block bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-emerald-100">ナレッジ参照</a>
+                </div>
+            </article>
+
+            <article class="bg-white p-6 rounded-xl shadow-sm border-t-4 border-sky-500 hover:shadow-md transition">
+                <div class="text-sky-500 text-3xl mb-4"><i class="fas fa-clock-rotate-left"></i></div>
+                <h2 class="text-lg font-bold mb-2">過去の質問</h2>
+                <p class="text-sm text-gray-500 mb-4">過去案件の要望・答弁・進捗を確認し、重複や継続課題を把握します。</p>
+                <a href="general-question-tracker.html" class="inline-block bg-sky-100 text-sky-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-sky-200">追跡画面を開く</a>
+            </article>
+
+            <article class="bg-white p-6 rounded-xl shadow-sm border-t-4 border-teal-500 hover:shadow-md transition">
+                <div class="text-teal-500 text-3xl mb-4"><i class="fas fa-pen-to-square"></i></div>
+                <h2 class="text-lg font-bold mb-2">新規質問作成</h2>
+                <p class="text-sm text-gray-500 mb-4">新しい一般質問案件を登録し、以後の答弁と進捗を追跡できます。</p>
+                <div class="flex flex-wrap gap-2">
+                    <a href="general-question-tracker.html?open=create" class="inline-block bg-teal-100 text-teal-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-teal-200">1件登録</a>
+                    <a href="general-question-tracker.html?open=bulk" class="inline-block bg-teal-100 text-teal-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-teal-200">一括登録</a>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            returnTo: "general-question-create.html"
+        });
+    </script>
+</body>
+</html>
