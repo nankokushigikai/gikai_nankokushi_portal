@@ -21,8 +21,15 @@
         <div class="bg-white rounded-xl shadow-sm p-3 md:p-4">
             <p id="viewer-subtitle" class="text-sm text-gray-600 mb-3"></p>
             <div id="pdf-stage" class="relative">
-                <iframe id="pdf-viewer" title="議案書PDF" class="relative z-0 w-full h-[78vh] border border-gray-200 rounded-lg bg-gray-50" src="about:blank"></iframe>
+                <canvas id="pdf-render-canvas" class="relative z-0 w-full border border-gray-200 rounded-lg bg-gray-50"></canvas>
                 <canvas id="pdf-ink-canvas" class="absolute inset-0 z-10 rounded-lg" style="touch-action: none;"></canvas>
+            </div>
+            <div class="mt-3 flex items-center justify-between gap-2 flex-wrap text-xs">
+                <div class="flex items-center gap-2">
+                    <button id="pdf-prev-page-btn" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">前ページ</button>
+                    <button id="pdf-next-page-btn" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">次ページ</button>
+                </div>
+                <span id="pdf-page-indicator" class="text-gray-600 font-semibold">ページ 0 / 0</span>
             </div>
             <div id="ink-toolbar" class="mt-3 flex items-center gap-2 flex-wrap text-xs">
                 <button id="ink-visibility-btn" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold">
@@ -71,6 +78,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.js"></script>
     <script src="auth-config.js"></script>
     <script src="auth.js"></script>
     <script>
@@ -78,10 +86,18 @@
         let _noteClient = null;
         let _noteMemberId = null;
         let inkModeEnabled = false;
+        let pdfDoc = null;
+        let currentPageNumber = 1;
+        let inkPages = {};
         let inkStrokes = [];
         let currentInkStroke = null;
         let currentSessionId = "";
         let currentFileName = "";
+
+        const pdfjsLib = window.pdfjsLib;
+        if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.js";
+        }
 
         function getParam(name) {
             const params = new URLSearchParams(window.location.search);
@@ -100,9 +116,36 @@
             return document.getElementById("pdf-ink-canvas");
         }
 
+        function getPdfCanvas() {
+            return document.getElementById("pdf-render-canvas");
+        }
+
         function getInkContext() {
             const canvas = getInkCanvas();
             return canvas.getContext("2d");
+        }
+
+        function getPdfPageKey() {
+            return String(currentPageNumber || 1);
+        }
+
+        function syncCurrentPageInkToStore() {
+            inkPages[getPdfPageKey()] = Array.isArray(inkStrokes) ? inkStrokes : [];
+        }
+
+        function loadCurrentPageInkFromStore() {
+            const value = inkPages[getPdfPageKey()];
+            inkStrokes = Array.isArray(value) ? value : [];
+        }
+
+        function updatePdfPageIndicator() {
+            const indicator = document.getElementById("pdf-page-indicator");
+            const prevBtn = document.getElementById("pdf-prev-page-btn");
+            const nextBtn = document.getElementById("pdf-next-page-btn");
+            const total = pdfDoc ? pdfDoc.numPages : 0;
+            indicator.textContent = `ページ ${currentPageNumber} / ${total}`;
+            prevBtn.disabled = !pdfDoc || currentPageNumber <= 1;
+            nextBtn.disabled = !pdfDoc || currentPageNumber >= total;
         }
 
         function setInkStatus(message) {
@@ -172,12 +215,11 @@
         }
 
         function resizeInkCanvas() {
-            const stage = document.getElementById("pdf-stage");
-            const viewer = document.getElementById("pdf-viewer");
+            const pdfCanvas = getPdfCanvas();
             const canvas = getInkCanvas();
             const ratio = window.devicePixelRatio || 1;
-            const width = stage.clientWidth || viewer.clientWidth;
-            const height = stage.clientHeight || viewer.clientHeight;
+            const width = Math.floor(pdfCanvas.clientWidth || 0);
+            const height = Math.floor(pdfCanvas.clientHeight || 0);
 
             canvas.width = Math.max(1, Math.floor(width * ratio));
             canvas.height = Math.max(1, Math.floor(height * ratio));
@@ -192,11 +234,9 @@
         function updateInkCanvasVisibility() {
             const canvas = getInkCanvas();
             const visibilityBtn = document.getElementById("ink-visibility-btn");
-            const hasInk = inkStrokes.length > 0;
             const canDraw = inkModeEnabled;
 
-            // モードOFFでも既存手書きは見えるようにし、描画入力だけ無効化する
-            canvas.classList.toggle("hidden", !(hasInk || canDraw));
+            canvas.classList.toggle("hidden", !canDraw);
             canvas.style.pointerEvents = canDraw ? "auto" : "none";
 
             visibilityBtn.disabled = false;
@@ -207,6 +247,7 @@
         }
 
         function resetInkData() {
+            inkPages = {};
             inkStrokes = [];
             currentInkStroke = null;
             inkModeEnabled = false;
@@ -232,11 +273,6 @@
 
         function setupInkCanvasEvents() {
             const canvas = getInkCanvas();
-            const viewer = document.getElementById("pdf-viewer");
-
-            viewer.addEventListener("load", () => {
-                requestAnimationFrame(() => requestAnimationFrame(() => resizeInkCanvas()));
-            });
 
             canvas.addEventListener("pointerdown", (event) => {
                 if (!inkModeEnabled) {
@@ -275,12 +311,97 @@
                 currentInkStroke = null;
                 updateInkCanvasVisibility();
                 redrawInkCanvas();
-                setInkStatus(`未保存（${inkStrokes.length}件）`);
+                syncCurrentPageInkToStore();
+                setInkStatus(`未保存（${currentPageNumber}ページ: ${inkStrokes.length}件）`);
             };
 
             canvas.addEventListener("pointerup", finishStroke);
             canvas.addEventListener("pointercancel", finishStroke);
-            window.addEventListener("resize", resizeInkCanvas);
+            window.addEventListener("resize", () => {
+                if (!pdfDoc) {
+                    return;
+                }
+                renderPdfPage(currentPageNumber).catch((error) => {
+                    console.warn("リサイズ時のPDF再描画に失敗:", error);
+                });
+            });
+        }
+
+        function parseInkPayload(payload) {
+            if (!payload) {
+                return {};
+            }
+            if (Array.isArray(payload)) {
+                // 旧フォーマット互換: 1ページ目として扱う
+                return { "1": payload };
+            }
+            if (payload.pages && typeof payload.pages === "object") {
+                return payload.pages;
+            }
+            return {};
+        }
+
+        function buildInkPayloadForSave() {
+            syncCurrentPageInkToStore();
+            const pages = {};
+            Object.keys(inkPages).forEach((key) => {
+                const strokes = Array.isArray(inkPages[key]) ? inkPages[key] : [];
+                const valid = strokes.filter((stroke) => Array.isArray(stroke.points) && stroke.points.length >= 2);
+                if (valid.length > 0) {
+                    pages[key] = valid;
+                }
+            });
+            return {
+                version: 2,
+                pages
+            };
+        }
+
+        async function renderPdfPage(pageNumber) {
+            if (!pdfDoc) {
+                return;
+            }
+
+            const page = await pdfDoc.getPage(pageNumber);
+            const stage = document.getElementById("pdf-stage");
+            const pdfCanvas = getPdfCanvas();
+            const pdfCtx = pdfCanvas.getContext("2d");
+            const ratio = window.devicePixelRatio || 1;
+            const baseViewport = page.getViewport({ scale: 1.0 });
+            const stageWidth = Math.max(320, stage.clientWidth || baseViewport.width);
+            const scale = stageWidth / baseViewport.width;
+            const viewport = page.getViewport({ scale });
+
+            pdfCanvas.width = Math.max(1, Math.floor(viewport.width * ratio));
+            pdfCanvas.height = Math.max(1, Math.floor(viewport.height * ratio));
+            pdfCanvas.style.width = `${viewport.width}px`;
+            pdfCanvas.style.height = `${viewport.height}px`;
+
+            pdfCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            pdfCtx.clearRect(0, 0, viewport.width, viewport.height);
+            await page.render({ canvasContext: pdfCtx, viewport }).promise;
+
+            resizeInkCanvas();
+            updatePdfPageIndicator();
+        }
+
+        async function goToPdfPage(pageNumber) {
+            if (!pdfDoc) {
+                return;
+            }
+
+            const bounded = Math.max(1, Math.min(pdfDoc.numPages, pageNumber));
+            if (bounded === currentPageNumber) {
+                return;
+            }
+
+            syncCurrentPageInkToStore();
+            currentPageNumber = bounded;
+            await renderPdfPage(currentPageNumber);
+            loadCurrentPageInkFromStore();
+            updateInkCanvasVisibility();
+            redrawInkCanvas();
+            setInkStatus(`表示中: ${currentPageNumber}ページ`);
         }
 
         async function loadInkNote() {
@@ -312,16 +433,17 @@
                     throw error;
                 }
 
-                inkStrokes = data && Array.isArray(data.ink_payload) ? data.ink_payload : [];
+                inkPages = data ? parseInkPayload(data.ink_payload) : {};
+                loadCurrentPageInkFromStore();
                 inkModeEnabled = false;
                 updateInkCanvasVisibility();
-                requestAnimationFrame(() => requestAnimationFrame(() => resizeInkCanvas()));
+                requestAnimationFrame(() => requestAnimationFrame(() => redrawInkCanvas()));
 
                 if (data && data.updated_at) {
                     const dt = new Date(data.updated_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-                    setInkStatus(`最終保存: ${dt}（${inkStrokes.length}件）`);
+                    setInkStatus(`最終保存: ${dt}`);
                 } else {
-                    setInkStatus(inkStrokes.length > 0 ? `未保存（${inkStrokes.length}件）` : "未保存");
+                    setInkStatus("未保存");
                 }
             } catch (error) {
                 console.warn("手書きメモ読込エラー:", error);
@@ -426,8 +548,9 @@
                 return;
             }
 
-            const validStrokes = inkStrokes.filter((stroke) => Array.isArray(stroke.points) && stroke.points.length >= 2);
-            if (validStrokes.length === 0) {
+            const inkPayload = buildInkPayloadForSave();
+            const pageKeys = Object.keys(inkPayload.pages || {});
+            if (pageKeys.length === 0) {
                 setInkStatus("保存対象なし（1本以上描いてから保存してください）");
                 return;
             }
@@ -445,7 +568,7 @@
                         member_id: memberId,
                         session_id: currentSessionId,
                         document_name: currentFileName,
-                        ink_payload: validStrokes,
+                        ink_payload: inkPayload,
                         updated_at: now
                     }, { onConflict: "member_id,session_id,document_name" });
 
@@ -453,9 +576,8 @@
                     throw error;
                 }
 
-                inkStrokes = validStrokes;
                 const dt = new Date(now).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-                setInkStatus(`最終保存: ${dt}（${inkStrokes.length}件）`);
+                setInkStatus(`最終保存: ${dt}（${pageKeys.length}ページ）`);
             } catch (error) {
                 console.warn("手書きメモ保存エラー:", error);
                 setInkStatus("手書き保存エラー");
@@ -501,6 +623,7 @@
             }
 
             inkStrokes.pop();
+            syncCurrentPageInkToStore();
             updateInkCanvasVisibility();
             redrawInkCanvas();
             setInkStatus("未保存");
@@ -510,6 +633,11 @@
             inkModeEnabled = !inkModeEnabled;
             updateInkCanvasVisibility();
             redrawInkCanvas();
+            if (inkModeEnabled) {
+                setInkStatus(`手書きモードON: ${currentPageNumber}ページに描画中`);
+            } else if (inkStrokes.length > 0) {
+                setInkStatus(`最終状態: ${currentPageNumber}ページ ${inkStrokes.length}件`);
+            }
         }
 
         function getReturnTo() {
@@ -551,11 +679,12 @@
         }
 
         async function renderPdf(pdfUrl) {
-            const iframe = document.getElementById("pdf-viewer");
             const pathLabel = document.getElementById("viewer-path");
 
-            iframe.src = "about:blank";
             releasePdfObjectUrl();
+            pdfDoc = null;
+            currentPageNumber = 1;
+            updatePdfPageIndicator();
 
             if (!pdfUrl) {
                 pathLabel.textContent = "PDF URLが指定されていません。";
@@ -565,19 +694,23 @@
             pathLabel.textContent = "PDFを読み込み中...";
 
             try {
+                if (!pdfjsLib || typeof pdfjsLib.getDocument !== "function") {
+                    throw new Error("PDF.jsの初期化に失敗しました");
+                }
+
                 const response = await fetch(pdfUrl);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
 
-                const blob = await response.blob();
-                activePdfObjectUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
-                iframe.src = activePdfObjectUrl;
+                const bytes = await response.arrayBuffer();
+                pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+                currentPageNumber = 1;
+                await renderPdfPage(currentPageNumber);
                 pathLabel.textContent = `表示中: ${pdfUrl}`;
             } catch (error) {
-                console.warn("PDF読込に失敗したため直接URL表示に切り替えます。", error);
-                iframe.src = pdfUrl;
-                pathLabel.textContent = `表示中（直接URL）: ${pdfUrl}`;
+                console.warn("PDF読込に失敗しました。", error);
+                pathLabel.textContent = `PDF表示エラー: ${error.message || "不明なエラー"}`;
             }
         }
 
@@ -602,6 +735,8 @@
         document.getElementById("ink-save-btn").addEventListener("click", saveInkNote);
         document.getElementById("ink-clear-btn").addEventListener("click", clearInkNote);
         document.getElementById("ink-undo-btn").addEventListener("click", undoInkStroke);
+        document.getElementById("pdf-prev-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber - 1));
+        document.getElementById("pdf-next-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
         document.getElementById("memo-save-btn").addEventListener("click", saveTextNote);
         document.getElementById("memo-clear-btn").addEventListener("click", clearTextNote);
         setupInkCanvasEvents();
