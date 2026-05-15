@@ -41,7 +41,7 @@
         <div class="bg-white rounded-xl shadow-sm p-3 md:p-4">
             <p id="viewer-subtitle" class="text-sm text-gray-600 mb-3"></p>
             <div class="mb-3 flex items-center justify-between gap-3 flex-wrap text-sm">
-                <span id="pdf-page-indicator-top" class="text-gray-600 font-semibold">ページ 0 / 0</span>
+                <span id="pdf-page-indicator-top" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 font-semibold shadow-sm hover:bg-indigo-100 transition-colors select-none">ページ 0 / 0</span>
                 <div id="ink-toolbar-top" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
                     <button id="tag-list-btn-top" type="button" class="ml-1 px-3 py-2 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-semibold whitespace-nowrap">
                         <i class="fas fa-list mr-1"></i>タグ一覧
@@ -76,18 +76,17 @@
                 <div id="pdf-text-layer" class="absolute inset-0 z-[5] rounded-lg"></div>
                 <canvas id="pdf-ink-canvas" class="absolute inset-0 z-10 rounded-lg" style="touch-action: none;"></canvas>
                 <div id="tag-pin-layer" class="absolute inset-0 z-20 pointer-events-none"></div>
-                <div id="selection-popover" class="absolute z-30 hidden w-[22rem] max-w-[92vw] bg-white border border-violet-200 rounded-lg shadow-xl p-2.5">
-                    <label for="selection-popover-input" class="block text-[11px] font-semibold text-violet-800">検索語</label>
-                    <div class="mt-1 flex items-center gap-1.5">
-                        <input id="selection-popover-input" type="text" class="flex-1 border border-violet-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-300" placeholder="文字を入力して検索">
-                        <button id="selection-popover-search-btn" type="button" class="px-2 py-1.5 rounded border border-violet-300 bg-violet-50 hover:bg-violet-100 text-[11px] text-violet-700">検索</button>
+                <div id="selection-popover" class="absolute z-30 hidden w-[33rem] max-w-[96vw] bg-slate-50 border-2 border-slate-400 rounded-lg shadow-2xl p-4">
+                    <label for="selection-popover-input" class="block text-base font-semibold text-slate-900">検索語</label>
+                    <div class="mt-2 flex items-center gap-2">
+                        <input id="selection-popover-input" type="text" class="flex-1 border border-slate-500 bg-white rounded px-3 py-2 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600" placeholder="文字を入力して検索">
+                        <button id="selection-popover-search-btn" type="button" class="px-3 py-2 rounded border border-blue-800 bg-blue-700 hover:bg-blue-800 text-base text-white font-semibold">検索</button>
                     </div>
-                    <p id="selection-popover-status" class="mt-1 text-[11px] text-gray-600"></p>
-                    <div id="selection-popover-results" class="mt-2 max-h-56 overflow-auto space-y-1.5"></div>
-                    <div class="mt-2 flex items-center justify-end gap-2">
-                        <button id="selection-popover-register-btn" type="button" class="px-2 py-1 rounded border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[11px] text-emerald-700">登録</button>
-                        <button id="selection-popover-open-results-btn" type="button" class="px-2 py-1 rounded border border-violet-300 bg-violet-50 hover:bg-violet-100 text-[11px] text-violet-700">下に表示</button>
-                        <button id="selection-popover-close-btn" type="button" class="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-[11px] text-gray-600">閉じる</button>
+                    <p id="selection-popover-status" class="mt-2 text-base font-medium text-slate-800"></p>
+                    <div id="selection-popover-results" class="mt-3 max-h-[21rem] overflow-auto space-y-2 border border-slate-300 bg-white rounded p-2"></div>
+                    <div class="mt-3 flex items-center justify-between gap-2">
+                        <button id="selection-popover-register-btn" type="button" class="px-3 py-2 rounded border border-emerald-700 bg-emerald-600 hover:bg-emerald-700 text-base text-white font-semibold">登録</button>
+                        <button id="selection-popover-close-btn" type="button" class="px-3 py-2 rounded border border-slate-400 bg-slate-200 hover:bg-slate-300 text-base text-slate-900 font-semibold">閉じる</button>
                     </div>
                 </div>
                 <div id="tag-pin-popover" class="absolute z-30 hidden w-72 bg-white border border-sky-200 rounded-lg shadow-xl p-3">
@@ -108,7 +107,7 @@
                 </div>
             </div>
             <div class="mt-3 flex items-center justify-between gap-3 flex-wrap text-sm">
-                <span id="pdf-page-indicator" class="text-gray-600 font-semibold">ページ 0 / 0</span>
+                <span id="pdf-page-indicator" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 font-semibold shadow-sm hover:bg-indigo-100 transition-colors select-none">ページ 0 / 0</span>
                 <div id="ink-toolbar" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
                     <button id="tag-list-btn" type="button" class="ml-1 px-3 py-2 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-semibold whitespace-nowrap">
                         <i class="fas fa-list mr-1"></i>タグ一覧
@@ -319,7 +318,7 @@
 
             if (!Array.isArray(items) || items.length === 0) {
                 const empty = document.createElement("p");
-                empty.className = "text-[11px] text-gray-500";
+                empty.className = "text-base font-medium text-slate-700";
                 empty.textContent = "一致する情報はありません";
                 container.appendChild(empty);
                 return;
@@ -327,23 +326,23 @@
 
             items.slice(0, 8).forEach((item) => {
                 const card = document.createElement("article");
-                card.className = "border border-violet-100 rounded-md bg-violet-50/40 px-2 py-1.5";
+                card.className = "border border-slate-300 rounded-md bg-white px-2 py-1.5";
 
                 const title = document.createElement("p");
-                title.className = "text-xs font-semibold text-violet-800";
+                title.className = "text-lg font-semibold text-slate-900";
                 title.textContent = item.title || item.keyword || "関連情報";
                 card.appendChild(title);
 
                 if (item.body) {
                     const body = document.createElement("p");
-                    body.className = "mt-0.5 text-[11px] text-gray-700 whitespace-pre-wrap";
+                    body.className = "mt-1 text-base text-slate-800 whitespace-pre-wrap";
                     body.textContent = String(item.body).slice(0, 120);
                     card.appendChild(body);
                 }
 
                 if (item.source_url) {
                     const link = document.createElement("a");
-                    link.className = "mt-1 inline-block text-[11px] text-indigo-700 hover:text-indigo-900 hover:underline";
+                    link.className = "mt-2 inline-block text-base text-blue-700 hover:text-blue-900 hover:underline font-medium";
                     link.href = item.source_url;
                     link.target = "_blank";
                     link.rel = "noopener noreferrer";
@@ -356,7 +355,7 @@
                         return;
                     }
                     const lawLink = document.createElement("a");
-                    lawLink.className = "mt-1 ml-2 inline-block text-[11px] text-emerald-700 hover:text-emerald-900 hover:underline";
+                    lawLink.className = "mt-2 ml-2 inline-block text-base text-emerald-700 hover:text-emerald-900 hover:underline font-medium";
                     lawLink.href = lawUrl;
                     lawLink.target = "_blank";
                     lawLink.rel = "noopener noreferrer";
@@ -428,6 +427,10 @@
             const text = `ページ ${currentPageNumber} / ${total}`;
             indicator.textContent = text;
             indicatorTop.textContent = text;
+            indicator.title = "クリックでページジャンプ";
+            indicatorTop.title = "クリックでページジャンプ";
+            indicator.classList.add("cursor-pointer");
+            indicatorTop.classList.add("cursor-pointer");
             if (tagCurrentPage) {
                 tagCurrentPage.textContent = String(currentPageNumber);
             }
@@ -437,6 +440,31 @@
             nextBtn.disabled = nextDisabled;
             prevBtnTop.disabled = prevDisabled;
             nextBtnTop.disabled = nextDisabled;
+        }
+
+        async function promptAndGoToPage() {
+            if (!pdfDoc || !pdfDoc.numPages) {
+                setInkStatus("PDFが未読込です");
+                return;
+            }
+
+            const total = Number(pdfDoc.numPages);
+            const raw = window.prompt(`移動先ページを入力してください（1-${total}）`, String(currentPageNumber || 1));
+            if (raw === null) {
+                return;
+            }
+
+            const page = Number(String(raw).trim());
+            if (!Number.isInteger(page)) {
+                setInkStatus("ページ番号は整数で入力してください");
+                return;
+            }
+            if (page < 1 || page > total) {
+                setInkStatus(`1〜${total} の範囲で入力してください`);
+                return;
+            }
+
+            await goToPdfPage(page);
         }
 
         function setInkStatus(message) {
@@ -2304,6 +2332,8 @@
         document.getElementById("pdf-next-page-btn-top").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
         document.getElementById("pdf-prev-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber - 1));
         document.getElementById("pdf-next-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
+        document.getElementById("pdf-page-indicator-top").addEventListener("click", promptAndGoToPage);
+        document.getElementById("pdf-page-indicator").addEventListener("click", promptAndGoToPage);
         document.getElementById("memo-save-btn").addEventListener("click", saveTextNote);
         document.getElementById("memo-clear-btn").addEventListener("click", clearTextNote);
         document.getElementById("term-register-btn-top").addEventListener("click", openTermRegisterModal);
@@ -2394,12 +2424,6 @@
             const q = normalizeSelectedText(input ? input.value : "");
             markSelectionPopoverInteraction();
             openTermRegisterFromSelection(q || latestSelectedText || getCurrentSelectedTextInPdf());
-        });
-        document.getElementById("selection-popover-open-results-btn").addEventListener("click", () => {
-            const panel = document.getElementById("selection-lookup-panel");
-            if (panel) {
-                panel.scrollIntoView({ behavior: "smooth", block: "start" });
-            }
         });
         document.getElementById("selection-popover-close-btn").addEventListener("click", closeSelectionPopover);
         document.getElementById("tag-list-btn-top").addEventListener("click", scrollToTagListPanel);
