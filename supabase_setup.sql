@@ -119,6 +119,29 @@ create table if not exists public.committee_materials (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists public.committee_activity_posts (
+    id bigserial primary key,
+    committee_name text not null check (committee_name in ('総務委員会', '産業建設委員会', '教育民生委員会', '議会運営委員会', '編集委員会')),
+    activity_date date not null,
+    title text not null,
+    activity_content text not null,
+    attachments jsonb not null default '[]'::jsonb,
+    created_by_email text not null,
+    created_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.committee_activity_recipients (
+    id bigserial primary key,
+    post_id bigint not null references public.committee_activity_posts(id) on delete cascade,
+    recipient_member_id text,
+    recipient_email text not null,
+    recipient_name text,
+    committee_name text not null,
+    assigned_at timestamptz not null default now()
+);
+
 create index if not exists announcements_notice_date_idx
 on public.announcements (notice_date desc, start_time asc);
 
@@ -127,6 +150,15 @@ on public.activity_records (user_email, activity_date desc, created_at desc);
 
 create index if not exists committee_materials_committee_date_idx
 on public.committee_materials (committee_name, material_date desc, created_at desc);
+
+create index if not exists committee_activity_posts_date_idx
+on public.committee_activity_posts (activity_date desc, created_at desc);
+
+create index if not exists committee_activity_recipients_email_idx
+on public.committee_activity_recipients (recipient_email, assigned_at desc);
+
+create index if not exists committee_activity_recipients_post_idx
+on public.committee_activity_recipients (post_id);
 
 alter table public.member_directory add column if not exists is_current boolean not null default true;
 alter table public.member_directory add column if not exists access_role text not null default '使用者';
@@ -175,6 +207,8 @@ alter table public.member_directory enable row level security;
 alter table public.announcements enable row level security;
 alter table public.activity_records enable row level security;
 alter table public.committee_materials enable row level security;
+alter table public.committee_activity_posts enable row level security;
+alter table public.committee_activity_recipients enable row level security;
 
 -- profiles ポリシー: 認証ユーザー向けのみ
 drop policy if exists profiles_select_own_or_admin on public.profiles;
@@ -363,6 +397,79 @@ with check (public.is_portal_admin());
 drop policy if exists committee_materials_delete_admin on public.committee_materials;
 create policy committee_materials_delete_admin on public.committee_materials
 for delete using (public.is_portal_admin());
+
+-- committee_activity_posts ポリシー
+drop policy if exists committee_activity_posts_select_own_or_admin on public.committee_activity_posts;
+create policy committee_activity_posts_select_own_or_admin on public.committee_activity_posts
+for select using (
+    auth.uid() is not null
+    and (
+        public.is_portal_admin()
+        or exists (
+            select 1
+            from public.committee_activity_recipients r
+            where r.post_id = committee_activity_posts.id
+              and lower(trim(r.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        )
+    )
+);
+
+drop policy if exists committee_activity_posts_insert_authenticated on public.committee_activity_posts;
+create policy committee_activity_posts_insert_authenticated on public.committee_activity_posts
+for insert with check (auth.uid() is not null);
+
+drop policy if exists committee_activity_posts_update_creator_or_admin on public.committee_activity_posts;
+create policy committee_activity_posts_update_creator_or_admin on public.committee_activity_posts
+for update using (
+    public.is_portal_admin()
+    or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+)
+with check (
+    public.is_portal_admin()
+    or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists committee_activity_posts_delete_creator_or_admin on public.committee_activity_posts;
+create policy committee_activity_posts_delete_creator_or_admin on public.committee_activity_posts
+for delete using (
+    public.is_portal_admin()
+    or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+-- committee_activity_recipients ポリシー
+drop policy if exists committee_activity_recipients_select_own_or_admin on public.committee_activity_recipients;
+create policy committee_activity_recipients_select_own_or_admin on public.committee_activity_recipients
+for select using (
+    public.is_portal_admin()
+    or lower(trim(recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists committee_activity_recipients_insert_authorized on public.committee_activity_recipients;
+create policy committee_activity_recipients_insert_authorized on public.committee_activity_recipients
+for insert with check (
+    auth.uid() is not null
+    and (
+        public.is_portal_admin()
+        or exists (
+            select 1
+            from public.committee_activity_posts p
+            where p.id = post_id
+              and lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        )
+    )
+);
+
+drop policy if exists committee_activity_recipients_delete_authorized on public.committee_activity_recipients;
+create policy committee_activity_recipients_delete_authorized on public.committee_activity_recipients
+for delete using (
+    public.is_portal_admin()
+    or exists (
+        select 1
+        from public.committee_activity_posts p
+        where p.id = post_id
+          and lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+    )
+);
 
 -- ----------------------------------------------------------------------
 -- member_directory -> profiles 同期

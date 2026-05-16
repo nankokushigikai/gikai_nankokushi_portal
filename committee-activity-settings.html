@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>委員会活動登録 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">委員会活動登録</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4 space-y-6">
+        <div class="mb-2">
+            <a href="system-settings.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>システム設定に戻る
+            </a>
+        </div>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500">
+            <h1 class="text-2xl font-bold mb-2 text-gray-700">委員会活動の登録</h1>
+            <p class="text-sm text-gray-600">委員会ごとの活動情報を登録します。登録時点の委員会所属メンバーに配布され、所属変更後も過去履歴を参照できます。</p>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">委員会活動の入力</h2>
+            <form id="committee-activity-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">委員会</label>
+                    <select id="committee_name" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="">選択してください</option>
+                        <option value="総務委員会">総務委員会</option>
+                        <option value="産業建設委員会">産業建設委員会</option>
+                        <option value="教育民生委員会">教育民生委員会</option>
+                        <option value="議会運営委員会">議会運営委員会</option>
+                        <option value="編集委員会">編集委員会</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">活動日</label>
+                    <input id="activity_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">タイトル</label>
+                    <input id="activity_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 産業建設委員会 現地調査報告">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">活動内容</label>
+                    <textarea id="activity_content" rows="5" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="活動内容を入力"></textarea>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">添付ファイル（複数可）</label>
+                    <input id="activity_files" type="file" multiple class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                    <p class="text-xs text-gray-500 mt-1">選択したファイルは Storage の gian バケットへ保存し、活動情報に紐づけます。</p>
+                </div>
+                <div class="md:col-span-2 flex gap-3">
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">登録</button>
+                    <button type="button" id="clear-form" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">クリア</button>
+                </div>
+            </form>
+            <p id="form-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        let dbClient = null;
+        let currentUserEmail = "";
+        let currentUserName = "";
+
+        function normalizeEmail(value) {
+            return String(value || "").trim().toLowerCase();
+        }
+
+        function normalizeCommitteeName(value) {
+            const raw = String(value || "").trim();
+            if (raw === "総務") return "総務委員会";
+            if (raw === "産業建設") return "産業建設委員会";
+            if (raw === "教育民生") return "教育民生委員会";
+            return raw;
+        }
+
+        async function resolveRecipients(committeeName) {
+            const { data, error } = await dbClient
+                .from("member_directory")
+                .select("member_id,full_name,email,committee,is_giun,is_editorial_committee,is_current")
+                .eq("is_current", true);
+
+            if (error) {
+                throw error;
+            }
+
+            const rows = data || [];
+            const recipients = rows.filter((item) => {
+                if (!item.email) return false;
+                if (committeeName === "議会運営委員会") {
+                    return item.is_giun === true;
+                }
+                if (committeeName === "編集委員会") {
+                    return item.is_editorial_committee === true;
+                }
+                return normalizeCommitteeName(item.committee) === committeeName;
+            });
+
+            return recipients.map((item) => ({
+                recipient_member_id: item.member_id || null,
+                recipient_email: normalizeEmail(item.email),
+                recipient_name: item.full_name || "",
+                committee_name: committeeName,
+                assigned_at: new Date().toISOString()
+            }));
+        }
+
+        async function uploadFiles(files) {
+            const uploaded = [];
+            for (let i = 0; i < files.length; i += 1) {
+                const file = files[i];
+                const safeName = String(file.name || `file_${i}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+                const path = `committee-materials/${Date.now()}_${i}_${safeName}`;
+
+                const { error } = await dbClient.storage
+                    .from("gian")
+                    .upload(path, file);
+
+                if (error) {
+                    throw new Error(`ファイルアップロード失敗: ${file.name} (${error.message})`);
+                }
+
+                const { data } = dbClient.storage.from("gian").getPublicUrl(path);
+                uploaded.push({
+                    name: file.name,
+                    path,
+                    url: data && data.publicUrl ? data.publicUrl : ""
+                });
+            }
+            return uploaded;
+        }
+
+        async function saveCommitteeActivity(event) {
+            event.preventDefault();
+            const message = document.getElementById("form-message");
+            message.textContent = "";
+
+            const committeeName = document.getElementById("committee_name").value;
+            const activityDate = document.getElementById("activity_date").value;
+            const title = document.getElementById("activity_title").value.trim();
+            const content = document.getElementById("activity_content").value.trim();
+            const files = Array.from(document.getElementById("activity_files").files || []);
+
+            if (!committeeName || !activityDate || !title || !content) {
+                message.textContent = "委員会、活動日、タイトル、活動内容を入力してください。";
+                return;
+            }
+
+            let recipients = [];
+            try {
+                recipients = await resolveRecipients(committeeName);
+            } catch (error) {
+                message.textContent = "委員会所属者の取得に失敗しました: " + error.message;
+                return;
+            }
+
+            if (recipients.length === 0) {
+                message.textContent = "この委員会に現在所属する配布対象がいません。先にメンバー設定を確認してください。";
+                return;
+            }
+
+            let attachments = [];
+            try {
+                attachments = await uploadFiles(files);
+            } catch (error) {
+                message.textContent = error.message;
+                return;
+            }
+
+            const postPayload = {
+                committee_name: committeeName,
+                activity_date: activityDate,
+                title,
+                activity_content: content,
+                attachments,
+                created_by_email: currentUserEmail,
+                created_by_name: currentUserName || "未設定",
+                updated_at: new Date().toISOString()
+            };
+
+            const { data: postData, error: postError } = await dbClient
+                .from("committee_activity_posts")
+                .insert(postPayload)
+                .select("id")
+                .single();
+
+            if (postError) {
+                message.textContent = "活動情報の保存に失敗しました: " + postError.message;
+                return;
+            }
+
+            const recipientRows = recipients.map((item) => ({
+                post_id: postData.id,
+                recipient_member_id: item.recipient_member_id,
+                recipient_email: item.recipient_email,
+                recipient_name: item.recipient_name,
+                committee_name: item.committee_name,
+                assigned_at: item.assigned_at
+            }));
+
+            const { error: recipientError } = await dbClient
+                .from("committee_activity_recipients")
+                .insert(recipientRows);
+
+            if (recipientError) {
+                message.textContent = "配布先の保存に失敗しました: " + recipientError.message;
+                return;
+            }
+
+            message.textContent = `登録しました（配布対象 ${recipientRows.length} 人）。`;
+            document.getElementById("committee-activity-form").reset();
+        }
+
+        document.getElementById("committee-activity-form").addEventListener("submit", saveCommitteeActivity);
+        document.getElementById("clear-form").addEventListener("click", () => {
+            document.getElementById("committee-activity-form").reset();
+            document.getElementById("form-message").textContent = "";
+        });
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            hideDisplayName: true,
+            returnTo: "committee-activity-settings.html",
+            onReady: async ({ client, session, profile }) => {
+                dbClient = client;
+                currentUserEmail = normalizeEmail((session && session.email) || (profile && profile.email) || "");
+                currentUserName = (session && session.displayName) || (profile && profile.display_name) || currentUserEmail || "未設定";
+            }
+        });
+    </script>
+</body>
+</html>

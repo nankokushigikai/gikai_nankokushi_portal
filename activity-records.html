@@ -55,7 +55,7 @@
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-violet-500">
             <h2 class="text-xl font-bold mb-1 text-gray-700">委員会情報一覧</h2>
-            <p id="committee-caption" class="text-sm text-gray-600 mb-4">所属委員会の資料を日付順に表示します。</p>
+            <p id="committee-caption" class="text-sm text-gray-600 mb-4">登録時に配布された委員会活動資料を日付順に表示します。</p>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div class="border border-gray-200 rounded-lg">
                     <ul id="committee-material-list" class="divide-y divide-gray-200">
@@ -68,7 +68,7 @@
                     <p class="text-sm font-semibold text-gray-800 mb-2" id="material-title">タイトルを選択してください</p>
                     <p class="text-sm text-gray-700 whitespace-pre-wrap" id="material-content">左の一覧から資料を選択すると内容を表示します。</p>
                     <div class="mt-4">
-                        <a id="material-attachment" href="#" target="_blank" rel="noopener noreferrer" class="hidden inline-block text-sm font-semibold text-violet-700 hover:text-violet-900">添付書類を開く</a>
+                        <ul id="material-attachments" class="space-y-2"></ul>
                         <p id="material-no-attachment" class="text-sm text-gray-500">添付書類はありません。</p>
                     </div>
                 </div>
@@ -128,6 +128,12 @@
             return `${parts[0]}/${parts[1]}/${parts[2]}`;
         }
 
+        function normalizeAttachments(value) {
+            if (!value) return [];
+            if (Array.isArray(value)) return value;
+            return [];
+        }
+
         async function resolveCurrentMemberCommittee() {
             if (!currentUserEmail) {
                 currentUserCommittee = "";
@@ -180,18 +186,29 @@
         }
 
         function renderMaterialDetail(item) {
-            document.getElementById("material-date").textContent = "日付: " + formatDate(item.material_date || "");
+            document.getElementById("material-date").textContent = "日付: " + formatDate(item.activity_date || "");
             document.getElementById("material-title").textContent = item.title || "";
-            document.getElementById("material-content").textContent = item.content || "";
+            document.getElementById("material-content").textContent = item.activity_content || "";
 
-            const link = document.getElementById("material-attachment");
+            const attachmentsList = document.getElementById("material-attachments");
+            attachmentsList.innerHTML = "";
             const noAttachment = document.getElementById("material-no-attachment");
-            if (item.attachment_url) {
-                link.href = item.attachment_url;
-                link.classList.remove("hidden");
+
+            const attachments = normalizeAttachments(item.attachments);
+            if (attachments.length > 0) {
+                attachments.forEach((attachment, index) => {
+                    const li = document.createElement("li");
+                    const a = document.createElement("a");
+                    a.href = attachment.url || "#";
+                    a.target = "_blank";
+                    a.rel = "noopener noreferrer";
+                    a.className = "inline-block text-sm font-semibold text-violet-700 hover:text-violet-900";
+                    a.textContent = attachment.name || `添付ファイル ${index + 1}`;
+                    li.appendChild(a);
+                    attachmentsList.appendChild(li);
+                });
                 noAttachment.classList.add("hidden");
             } else {
-                link.classList.add("hidden");
                 noAttachment.classList.remove("hidden");
             }
         }
@@ -203,19 +220,41 @@
             list.innerHTML = "";
             message.textContent = "";
 
-            if (!currentUserCommittee) {
-                caption.textContent = "所属委員会が未設定のため、資料を表示できません。";
-                list.innerHTML = '<li class="p-3 text-sm text-gray-500">所属委員会が未設定です。</li>';
+            if (!currentUserEmail) {
+                caption.textContent = "ログイン情報を確認できないため、資料を表示できません。";
+                list.innerHTML = '<li class="p-3 text-sm text-gray-500">ログイン情報が不足しています。</li>';
                 return;
             }
 
-            caption.textContent = `所属委員会（${currentUserCommittee}）の資料を日付順に表示します。`;
+            caption.textContent = "あなたに配布された委員会活動資料を日付順に表示します。";
+
+            const { data: recipientRows, error: recipientError } = await dbClient
+                .from("committee_activity_recipients")
+                .select("post_id")
+                .eq("recipient_email", currentUserEmail);
+
+            if (recipientError) {
+                message.textContent = "配布先情報の読込に失敗しました: " + recipientError.message;
+                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料を表示できませんでした。</li>';
+                return;
+            }
+
+            const postIds = Array.from(new Set((recipientRows || []).map((row) => row.post_id).filter(Boolean)));
+            if (postIds.length === 0) {
+                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料はありません。</li>';
+                document.getElementById("material-date").textContent = "日付: -";
+                document.getElementById("material-title").textContent = "資料はありません";
+                document.getElementById("material-content").textContent = "配布された委員会活動資料がありません。";
+                document.getElementById("material-attachments").innerHTML = "";
+                document.getElementById("material-no-attachment").classList.remove("hidden");
+                return;
+            }
 
             const { data, error } = await dbClient
-                .from("committee_materials")
-                .select("id,committee_name,material_date,title,content,attachment_url")
-                .eq("committee_name", currentUserCommittee)
-                .order("material_date", { ascending: false })
+                .from("committee_activity_posts")
+                .select("id,committee_name,activity_date,title,activity_content,attachments,created_at")
+                .in("id", postIds)
+                .order("activity_date", { ascending: false })
                 .order("created_at", { ascending: false });
 
             if (error) {
@@ -229,8 +268,8 @@
                 list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料はありません。</li>';
                 document.getElementById("material-date").textContent = "日付: -";
                 document.getElementById("material-title").textContent = "資料はありません";
-                document.getElementById("material-content").textContent = "所属委員会に紐づく資料が登録されていません。";
-                document.getElementById("material-attachment").classList.add("hidden");
+                document.getElementById("material-content").textContent = "配布された資料が登録されていません。";
+                document.getElementById("material-attachments").innerHTML = "";
                 document.getElementById("material-no-attachment").classList.remove("hidden");
                 return;
             }
@@ -242,7 +281,7 @@
                 button.type = "button";
                 button.className = "w-full text-left hover:bg-violet-50 rounded p-2";
                 button.innerHTML = `
-                    <div class="text-xs text-gray-500 mb-1">${formatDate(item.material_date)}</div>
+                    <div class="text-xs text-gray-500 mb-1">${formatDate(item.activity_date)} / ${item.committee_name || ""}</div>
                     <div class="text-sm font-semibold text-gray-800">${item.title || ""}</div>
                 `;
                 button.addEventListener("click", () => renderMaterialDetail(item));
