@@ -48,6 +48,27 @@
                     </tbody>
                 </table>
             </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">1. 正副議長</h3>
+                    <ul id="user-leaders-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">2. 委員会一覧</h3>
+                    <ul id="user-committee-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">3. 編集委員一覧</h3>
+                    <ul id="user-editorial-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+            </div>
             <p id="member-directory-message" class="mt-3 text-sm text-gray-600"></p>
         </section>
 
@@ -207,6 +228,62 @@
                 .replace(/'/g, "&#39;");
         }
 
+        function renderSummaryList(targetId, lines, emptyText) {
+            const list = document.getElementById(targetId);
+            if (!list) return;
+
+            if (!lines || lines.length === 0) {
+                list.innerHTML = `<li class="text-gray-500">${emptyText}</li>`;
+                return;
+            }
+
+            list.innerHTML = lines.map((line) => `<li>${line}</li>`).join("");
+        }
+
+        function renderMemberSummaries(items) {
+            const rows = items || [];
+
+            const leaders = rows
+                .filter((item) => item.position_name === "議長" || item.position_name === "副議長")
+                .sort((a, b) => {
+                    const rankA = a.position_name === "議長" ? 0 : 1;
+                    const rankB = b.position_name === "議長" ? 0 : 1;
+                    if (rankA !== rankB) return rankA - rankB;
+                    return String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
+                })
+                .map((item) => `${escapeHtml(item.position_name)}: ${escapeHtml(item.full_name)}${item.furigana ? ` (${escapeHtml(item.furigana)})` : ""}`);
+
+            const committeeOrder = ["産業建設", "教育民生", "総務"];
+            const committeeRoleOrder = { "委員長": 0, "副委員長": 1, "委員": 2 };
+            const committees = committeeOrder
+                .map((committeeName) => {
+                    const members = rows
+                        .filter((item) => item.committee === committeeName)
+                        .sort((a, b) => {
+                            const roleDiff = (committeeRoleOrder[a.committee_role] ?? 99) - (committeeRoleOrder[b.committee_role] ?? 99);
+                            if (roleDiff !== 0) return roleDiff;
+                            return String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
+                        })
+                        .map((item) => `${escapeHtml(item.full_name)}${item.committee_role ? `(${escapeHtml(item.committee_role)})` : ""}`);
+
+                    if (members.length === 0) {
+                        return null;
+                    }
+
+                    return `${escapeHtml(committeeName)}: ${members.join("、")}`;
+                })
+                .filter(Boolean);
+
+            const editorials = rows
+                .filter((item) => item.is_editorial_committee)
+                .sort((a, b) => String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja"))
+                .map((item) => `${escapeHtml(item.full_name)}${item.furigana ? ` (${escapeHtml(item.furigana)})` : ""}`);
+
+            renderSummaryList("user-leaders-summary-list", leaders, "該当者はいません。");
+            renderSummaryList("user-committee-summary-list", committees, "委員会データはありません。");
+            renderSummaryList("user-editorial-summary-list", editorials, "該当者はいません。");
+        }
+
         function isOwnMemberRow(item) {
             if (!item) {
                 return false;
@@ -273,6 +350,7 @@
             if (error) {
                 message.textContent = "メンバー一覧の読込に失敗しました: " + error.message;
                 tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="2">データを表示できませんでした。</td></tr>';
+                renderMemberSummaries([]);
                 return;
             }
 
@@ -280,8 +358,11 @@
 
             if (memberRows.length === 0) {
                 tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="2">登録データがありません。</td></tr>';
+                renderMemberSummaries([]);
                 return;
             }
+
+            renderMemberSummaries(memberRows);
 
             memberRows.forEach((item) => {
                 const tr = document.createElement("tr");

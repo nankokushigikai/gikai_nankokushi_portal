@@ -178,6 +178,30 @@
                 </table>
             </div>
         </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-cyan-500 mt-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">メンバーまとめ表示</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">1. 正副議長</h3>
+                    <ul id="leaders-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">2. 委員会一覧</h3>
+                    <ul id="committee-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">3. 編集委員一覧</h3>
+                    <ul id="editorial-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- APIキー取得説明モーダル -->
@@ -307,6 +331,71 @@
             return flag ? "YES" : "NO";
         }
 
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function renderList(targetId, lines, emptyText) {
+            const list = document.getElementById(targetId);
+            if (!list) return;
+
+            if (!lines || lines.length === 0) {
+                list.innerHTML = `<li class="text-gray-500">${emptyText}</li>`;
+                return;
+            }
+
+            list.innerHTML = lines.map((line) => `<li>${line}</li>`).join("");
+        }
+
+        function renderMemberSummaries(items) {
+            const rows = items || [];
+
+            const leaders = rows
+                .filter((item) => item.position_name === "議長" || item.position_name === "副議長")
+                .sort((a, b) => {
+                    const rankA = a.position_name === "議長" ? 0 : 1;
+                    const rankB = b.position_name === "議長" ? 0 : 1;
+                    if (rankA !== rankB) return rankA - rankB;
+                    return String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
+                })
+                .map((item) => `${escapeHtml(item.position_name)}: ${escapeHtml(item.full_name)}${item.furigana ? ` (${escapeHtml(item.furigana)})` : ""}`);
+
+            const committeeOrder = ["産業建設", "教育民生", "総務"];
+            const committeeRoleOrder = { "委員長": 0, "副委員長": 1, "委員": 2 };
+            const committees = committeeOrder
+                .map((committeeName) => {
+                    const members = rows
+                        .filter((item) => item.committee === committeeName)
+                        .sort((a, b) => {
+                            const roleDiff = (committeeRoleOrder[a.committee_role] ?? 99) - (committeeRoleOrder[b.committee_role] ?? 99);
+                            if (roleDiff !== 0) return roleDiff;
+                            return String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
+                        })
+                        .map((item) => `${escapeHtml(item.full_name)}${item.committee_role ? `(${escapeHtml(item.committee_role)})` : ""}`);
+
+                    if (members.length === 0) {
+                        return null;
+                    }
+
+                    return `${escapeHtml(committeeName)}: ${members.join("、")}`;
+                })
+                .filter(Boolean);
+
+            const editorials = rows
+                .filter((item) => item.is_editorial_committee)
+                .sort((a, b) => String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja"))
+                .map((item) => `${escapeHtml(item.full_name)}${item.furigana ? ` (${escapeHtml(item.furigana)})` : ""}`);
+
+            renderList("leaders-summary-list", leaders, "該当者はいません。");
+            renderList("committee-summary-list", committees, "委員会データはありません。");
+            renderList("editorial-summary-list", editorials, "該当者はいません。");
+        }
+
         function normalizePosition(category, positionName) {
             const normalized = LEGACY_POSITION_MAP[positionName] || positionName || "未";
             const candidates = POSITION_OPTIONS[category] || POSITION_OPTIONS["議員"];
@@ -411,8 +500,11 @@
 
             if (error) {
                 document.getElementById("form-message").textContent = "一覧読込失敗: " + error.message;
+                renderMemberSummaries([]);
                 return;
             }
+
+            renderMemberSummaries(data || []);
 
             (data || []).forEach((item) => {
                 const tr = document.createElement("tr");
