@@ -16,7 +16,6 @@
                 <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
             </h1>
             <div class="text-right">
-                <div class="text-sm mb-1">2026年3月29日 運用中</div>
                 <div id="authArea"></div>
             </div>
         </div>
@@ -25,7 +24,10 @@
     <main class="container mx-auto py-8 px-4">
         <!-- メインメッセージ -->
         <section class="mb-10">
-            <h2 id="greeting-message" class="text-2xl font-bold mb-2">こんにちは、議員。</h2>
+            <div class="flex items-end justify-between gap-4 mb-2">
+                <h2 id="greeting-message" class="text-2xl font-bold">こんにちは、議員。</h2>
+                <div id="today-date" class="text-sm font-semibold text-gray-500">--/--(--)</div>
+            </div>
 
             <!-- お知らせタイル -->
             <div class="mt-5 bg-white p-5 rounded-xl shadow-sm border-l-4 border-rose-500">
@@ -34,7 +36,7 @@
                         <div class="text-rose-500 text-xl"><i class="fas fa-bullhorn"></i></div>
                         <h3 class="text-base font-bold text-gray-800">お知らせ</h3>
                     </div>
-                    <a href="system-settings.html" class="inline-block text-xs font-semibold text-rose-600 hover:text-rose-700">一覧を確認</a>
+                    <a href="announcements.html" class="inline-block text-xs font-semibold text-rose-600 hover:text-rose-700">一覧を確認</a>
                 </div>
                 <ul id="announcement-tile-list" class="space-y-2 text-sm">
                     <li class="text-gray-500">お知らせを読み込み中です...</li>
@@ -140,11 +142,24 @@
             const dateText = formatAnnouncementDate(item.notice_date);
             const start = item.start_time ? String(item.start_time).slice(0, 5) : "--:--";
             const end = item.end_time ? String(item.end_time).slice(0, 5) : "--:--";
-            const base = `${dateText} ${start}-${end} ${item.title || ""}`.trim();
+            const ownerName = (item.owner_name || "未設定").trim();
+            const base = `${dateText} ${start}-${end} ${item.title || ""} / 登録: ${ownerName}`.trim();
             if (!item.content) {
                 return base;
             }
             return `${base} / ${item.content}`;
+        }
+
+        function renderTodayDate() {
+            const target = document.getElementById("today-date");
+            if (!target) return;
+
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, "0");
+            const d = String(now.getDate()).padStart(2, "0");
+            const week = ["日", "月", "火", "水", "木", "金", "土"][now.getDay()];
+            target.textContent = `${y}/${m}/${d}(${week})`;
         }
 
         function renderAnnouncements(items) {
@@ -186,7 +201,7 @@
 
             const { data, error } = await client
                 .from("announcements")
-                .select("notice_date,start_time,end_time,title,content")
+                .select("notice_date,start_time,end_time,title,content,owner_name")
                 .order("notice_date", { ascending: false })
                 .order("start_time", { ascending: true })
                 .limit(3);
@@ -203,8 +218,10 @@
             requireAuth: true,
             minRole: "viewer",
             authTargetId: "authArea",
+            hideDisplayName: true,
             returnTo: "index.html",
             onReady: async (context) => {
+                renderTodayDate();
                 // ユーザーがログインしている場合、挨拶メッセージを更新
                 if (context.session || context.profile) {
                     const greetingElement = document.getElementById("greeting-message");

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>お知らせ登録 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">お知らせ登録</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6 flex flex-wrap gap-3">
+            <a href="index.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>ポータルに戻る
+            </a>
+            <a href="announcements.html" class="text-rose-700 hover:text-rose-900 text-sm font-semibold">
+                <i class="fas fa-list mr-1"></i>お知らせ一覧へ
+            </a>
+        </div>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-rose-500">
+            <h1 class="text-2xl font-bold mb-2 text-gray-700">お知らせ登録</h1>
+            <p class="text-sm text-gray-600 mb-5">このページは全員が開けます。登録者名はログイン中の利用者名で自動保存されます。</p>
+
+            <form id="announcement-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">日付</label>
+                    <input id="notice_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">タイトル</label>
+                    <input id="notice_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">開始時間</label>
+                    <input id="start_time" type="time" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">終了時間</label>
+                    <input id="end_time" type="time" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">内容</label>
+                    <textarea id="notice_content" rows="3" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="お知らせ本文を入力"></textarea>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">登録者</label>
+                    <input id="owner_name_display" readonly class="mt-1 w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">連絡先電話</label>
+                    <input id="contact_phone" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 088-000-0000">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">連絡先メール</label>
+                    <input id="contact_email" type="email" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="example@nankoku.lg.jp">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">備考</label>
+                    <input id="remarks" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="補足事項があれば入力">
+                </div>
+
+                <div class="md:col-span-2 flex gap-3">
+                    <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">登録</button>
+                    <button type="button" id="announcement-clear" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">クリア</button>
+                </div>
+            </form>
+            <p id="announcement-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        let dbClient = null;
+        let currentOwnerName = "";
+
+        function clearForm() {
+            document.getElementById("announcement-form").reset();
+            document.getElementById("owner_name_display").value = currentOwnerName || "";
+        }
+
+        function resolveOwnerName(session, profile) {
+            return (session && session.displayName)
+                || (profile && profile.display_name)
+                || (session && session.email)
+                || "未設定";
+        }
+
+        async function saveAnnouncement(event) {
+            event.preventDefault();
+
+            const payload = {
+                notice_date: document.getElementById("notice_date").value,
+                start_time: document.getElementById("start_time").value,
+                end_time: document.getElementById("end_time").value,
+                title: document.getElementById("notice_title").value.trim(),
+                content: document.getElementById("notice_content").value.trim(),
+                owner_name: currentOwnerName || "未設定",
+                contact_phone: document.getElementById("contact_phone").value.trim() || null,
+                contact_email: document.getElementById("contact_email").value.trim() || null,
+                remarks: document.getElementById("remarks").value.trim() || null,
+                updated_at: new Date().toISOString()
+            };
+
+            if (!payload.notice_date || !payload.start_time || !payload.end_time || !payload.title || !payload.content) {
+                document.getElementById("announcement-message").textContent = "必須項目を入力してください。";
+                return;
+            }
+
+            if (payload.start_time > payload.end_time) {
+                document.getElementById("announcement-message").textContent = "時間の入力を確認してください（開始時間 <= 終了時間）。";
+                return;
+            }
+
+            const { error } = await dbClient
+                .from("announcements")
+                .insert(payload);
+
+            if (error) {
+                document.getElementById("announcement-message").textContent = "登録失敗: " + error.message;
+                return;
+            }
+
+            document.getElementById("announcement-message").textContent = "登録しました。";
+            clearForm();
+        }
+
+        document.getElementById("announcement-form").addEventListener("submit", saveAnnouncement);
+        document.getElementById("announcement-clear").addEventListener("click", clearForm);
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            hideDisplayName: true,
+            returnTo: "announcement-register.html",
+            onReady: async ({ client, session, profile }) => {
+                dbClient = client;
+                currentOwnerName = resolveOwnerName(session, profile);
+                document.getElementById("owner_name_display").value = currentOwnerName;
+            }
+        });
+    </script>
+</body>
+</html>

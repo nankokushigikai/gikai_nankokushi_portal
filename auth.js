@@ -165,11 +165,13 @@ window.portalAuth = (() => {
         const accessRole = (profile && profile.access_role) || (user && user.accessRole) || (role === "admin" ? "管理者" : "使用者");
         const email = (profile && profile.email) || (user && user.email) || "ユーザー";
         const name = (profile && profile.display_name) || email;
+        const hideDisplayName = !!(options && options.hideDisplayName);
+        const displayNameHtml = hideDisplayName ? "" : `<span style="font-size:12px;color:#fff;">${name}</span>`;
 
         target.innerHTML = `
             <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
                 <span style="font-size:12px;background:#eef2ff;color:#4338ca;padding:4px 8px;border-radius:999px;">${accessRole}</span>
-                <span style="font-size:12px;color:#fff;">${name}</span>
+                ${displayNameHtml}
                 <button id="logoutButton" style="font-size:12px;background:#111827;color:#fff;border:0;padding:6px 10px;border-radius:8px;cursor:pointer;">ログアウト</button>
             </div>
         `;
