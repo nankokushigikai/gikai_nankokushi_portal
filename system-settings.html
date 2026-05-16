@@ -109,6 +109,10 @@
                     <input id="edit_full_name" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="名前を入力">
                 </div>
                 <div>
+                    <label class="text-sm font-semibold text-gray-700">ふりがな</label>
+                    <input id="edit_furigana" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: なんこく たろう">
+                </div>
+                <div>
                     <label class="text-sm font-semibold text-gray-700">郵便番号</label>
                     <input id="edit_postal_code" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 783-8501">
                 </div>
@@ -225,6 +229,7 @@
         async function openMemberEditModal(item) {
             document.getElementById("edit_member_id").value = item.member_id || "";
             document.getElementById("edit_full_name").value = item.full_name || "";
+            document.getElementById("edit_furigana").value = item.furigana || "";
             document.getElementById("edit_postal_code").value = item.postal_code || "";
             document.getElementById("edit_address").value = item.address || "";
             document.getElementById("edit_phone").value = item.phone || "";
@@ -260,7 +265,7 @@
 
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("member_id,full_name,postal_code,address,phone,mobile,position_name,email,committee,committee_role,is_giun,is_editorial_committee")
+                .select("member_id,full_name,furigana,postal_code,address,phone,mobile,position_name,email,committee,committee_role,is_giun,is_editorial_committee")
                 .order("member_id", { ascending: true });
 
             if (error) {
@@ -310,6 +315,7 @@
 
             const memberId = document.getElementById("edit_member_id").value.trim();
             const fullName = document.getElementById("edit_full_name").value.trim();
+            const furigana = document.getElementById("edit_furigana").value.trim();
             const postalCode = document.getElementById("edit_postal_code").value.trim();
             const address = document.getElementById("edit_address").value.trim();
             const phone = document.getElementById("edit_phone").value.trim();
@@ -343,6 +349,7 @@
                 .from("member_directory")
                 .update({
                     full_name: fullName,
+                    furigana: furigana || null,
                     postal_code: postalCode || null,
                     address: address || null,
                     phone: phone || null,

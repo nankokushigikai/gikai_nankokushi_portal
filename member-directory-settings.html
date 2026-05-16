@@ -56,6 +56,10 @@
                     <input id="full_name" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 南国 太郎">
                 </div>
                 <div>
+                    <label class="text-sm font-semibold text-gray-700">ふりがな</label>
+                    <input id="furigana" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: なんこく たろう">
+                </div>
+                <div>
                     <label class="text-sm font-semibold text-gray-700">権限</label>
                     <select id="access_role" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                         <option value="使用者" selected>使用者</option>
@@ -160,6 +164,7 @@
                         <tr>
                             <th class="text-left p-2 border">現職</th>
                             <th class="text-left p-2 border">氏名</th>
+                            <th class="text-left p-2 border">ふりがな</th>
                             <th class="text-left p-2 border">権限</th>
                             <th class="text-left p-2 border">区分</th>
                             <th class="text-left p-2 border">役職</th>
@@ -364,6 +369,7 @@
             document.getElementById("member_id").value = item.member_id || "";
             document.getElementById("is_current").checked = item.is_current !== false;
             document.getElementById("full_name").value = item.full_name || "";
+            document.getElementById("furigana").value = item.furigana || "";
             document.getElementById("postal_code").value = item.postal_code || "";
             document.getElementById("address").value = item.address || "";
             document.getElementById("phone").value = item.phone || "";
@@ -395,7 +401,7 @@
         async function loadMembers() {
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("member_id,full_name,is_current,access_role,category,position_name,committee,is_giun,is_editorial_committee")
+                .select("member_id,full_name,furigana,is_current,access_role,category,position_name,committee,is_giun,is_editorial_committee")
                 .order("member_id", { ascending: true });
 
             const tbody = document.getElementById("member-list");
@@ -411,6 +417,7 @@
                 tr.innerHTML = `
                     <td class="p-2 border">${item.is_current ? "現職" : "退任"}</td>
                     <td class="p-2 border">${item.full_name || ""}</td>
+                    <td class="p-2 border">${item.furigana || ""}</td>
                     <td class="p-2 border">${item.access_role || "使用者"}</td>
                     <td class="p-2 border">${item.category || ""}</td>
                     <td class="p-2 border">${item.position_name || ""}</td>
@@ -480,6 +487,7 @@
             const payload = {
                 member_id: currentMemberId,
                 full_name: document.getElementById("full_name").value.trim(),
+                furigana: document.getElementById("furigana").value.trim() || null,
                 is_current: document.getElementById("is_current").checked,
                 postal_code: document.getElementById("postal_code").value.trim() || null,
                 address: document.getElementById("address").value.trim() || null,

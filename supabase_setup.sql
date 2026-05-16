@@ -60,6 +60,7 @@ create table if not exists public.member_positions_master (
 create table if not exists public.member_directory (
     member_id text primary key,
     full_name text not null,
+    furigana text,
     is_current boolean not null default true,
     postal_code text,
     address text,
@@ -99,6 +100,7 @@ on public.announcements (notice_date desc, start_time asc);
 
 alter table public.member_directory add column if not exists is_current boolean not null default true;
 alter table public.member_directory add column if not exists access_role text not null default '使用者';
+alter table public.member_directory add column if not exists furigana text;
 
 alter table public.profiles enable row level security;
 alter table public.meeting_settings enable row level security;
