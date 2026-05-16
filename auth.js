@@ -103,7 +103,6 @@ window.portalAuth = (() => {
             category: member.category || null,
             isCurrent: !!member.is_current,
             googleEmail: googleInfo && googleInfo.email ? googleInfo.email : null,
-            googleAccessToken: googleInfo && googleInfo.accessToken ? googleInfo.accessToken : null,
             loginTime: new Date().toISOString()
         };
     }
@@ -170,7 +169,7 @@ window.portalAuth = (() => {
         target.innerHTML = `
             <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
                 <span style="font-size:12px;background:#eef2ff;color:#4338ca;padding:4px 8px;border-radius:999px;">${accessRole}</span>
-                <span style="font-size:12px;color:#374151;">${name}</span>
+                <span style="font-size:12px;color:#fff;">${name}</span>
                 <button id="logoutButton" style="font-size:12px;background:#111827;color:#fff;border:0;padding:6px 10px;border-radius:8px;cursor:pointer;">ログアウト</button>
             </div>
         `;
@@ -336,8 +335,7 @@ window.portalAuth = (() => {
                 scopes: (window.AUTH_CONFIG.googleScopes || [
                     "openid",
                     "email",
-                    "profile",
-                    "https://www.googleapis.com/auth/calendar.readonly"
+                    "profile"
                 ]).join(" ")
             }
         });

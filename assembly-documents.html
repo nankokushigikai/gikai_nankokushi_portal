@@ -463,7 +463,6 @@
 
             try {
                 const supabase = getNoteClient();
-                console.log("[inkNote] 読込: memberId=", memberId, "sessionId=", sessionId, "docName=", documentInfo.fileName);
                 const { data, error } = await supabase
                     .from("document_ink_notes")
                     .select("ink_payload, updated_at")
@@ -474,9 +473,7 @@
 
                 if (error) throw error;
 
-                console.log("[inkNote] DB結果:", data);
                 inkStrokes = data && Array.isArray(data.ink_payload) ? data.ink_payload : [];
-                console.log("[inkNote] ストローク数:", inkStrokes.length);
                 inkVisible = true;
                 updateInkCanvasVisibility();
                 // 2フレーム待機してレイアウト確定後に描画
