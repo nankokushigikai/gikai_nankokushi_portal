@@ -10,6 +10,53 @@
 -- 
 -- これにより、アップロードされたファイルが公開URLでアクセス可能になります。
 
+-- Storage objects ポリシー（gian バケット）
+-- 公開閲覧はバケット側の public 設定を利用しつつ、
+-- アップロードは認証ユーザーのみ許可する。
+drop policy if exists gian_objects_select_public on storage.objects;
+create policy gian_objects_select_public on storage.objects
+for select using (bucket_id = 'gian');
+
+drop policy if exists gian_objects_insert_authenticated on storage.objects;
+create policy gian_objects_insert_authenticated on storage.objects
+for insert to authenticated
+with check (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+);
+
+drop policy if exists gian_objects_update_owner_or_admin on storage.objects;
+create policy gian_objects_update_owner_or_admin on storage.objects
+for update to authenticated
+using (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+    and (
+        owner = auth.uid()
+        or public.is_portal_admin()
+    )
+)
+with check (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+    and (
+        owner = auth.uid()
+        or public.is_portal_admin()
+    )
+);
+
+drop policy if exists gian_objects_delete_owner_or_admin on storage.objects;
+create policy gian_objects_delete_owner_or_admin on storage.objects
+for delete to authenticated
+using (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+    and (
+        owner = auth.uid()
+        or public.is_portal_admin()
+    )
+);
+
 create table if not exists public.profiles (
     user_id uuid primary key,
     email text not null unique,
