@@ -51,6 +51,16 @@
                     <input id="activity_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">修正対象（任意）</label>
+                    <div class="mt-1 flex flex-col md:flex-row gap-2">
+                        <select id="existing_post_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="">新規登録モード</option>
+                        </select>
+                        <button type="button" id="switch-new-mode" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">新規に戻す</button>
+                    </div>
+                    <p id="edit-mode-label" class="text-xs text-gray-500 mt-1">新規登録モードです。</p>
+                </div>
+                <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700">タイトル</label>
                     <input id="activity_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 産業建設委員会 現地調査報告">
                 </div>
@@ -63,8 +73,19 @@
                     <input id="activity_files" type="file" multiple class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <p class="text-xs text-gray-500 mt-1">選択したファイルは Storage の gian バケットへ保存し、活動情報に紐づけます。</p>
                 </div>
+                <div class="md:col-span-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div class="flex items-center justify-between gap-3">
+                        <label class="text-sm font-semibold text-gray-700">配布先（チェックした人に公開）</label>
+                        <div class="flex gap-2">
+                            <button type="button" id="check-all-recipients" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-semibold">全選択</button>
+                            <button type="button" id="uncheck-all-recipients" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-semibold">全解除</button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">委員会選択時に現在所属者を自動表示します。修正時は配布済み/未配布を表示します。</p>
+                    <div id="recipient-list" class="mt-3 space-y-2 text-sm"></div>
+                </div>
                 <div class="md:col-span-2 flex gap-3">
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">登録</button>
+                    <button id="submit-button" type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">登録</button>
                     <button type="button" id="clear-form" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">クリア</button>
                 </div>
             </form>
@@ -83,6 +104,21 @@
         let dbClient = null;
         let currentUserEmail = "";
         let currentUserName = "";
+        let currentUserId = null;
+        let currentRecipients = [];
+        let existingRecipientMap = new Map();
+        let currentMode = "new";
+        let currentPostId = null;
+        let currentPostAttachments = [];
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
 
         function normalizeEmail(value) {
             return String(value || "").trim().toLowerCase();
@@ -123,8 +159,185 @@
                 recipient_email: normalizeEmail(item.email),
                 recipient_name: item.full_name || "",
                 committee_name: committeeName,
-                assigned_at: new Date().toISOString()
+                assigned_at: new Date().toISOString(),
+                is_current_member: true,
+                was_distributed: false
             }));
+        }
+
+        function setEditModeLabel() {
+            const label = document.getElementById("edit-mode-label");
+            const submitButton = document.getElementById("submit-button");
+            if (currentMode === "edit") {
+                label.textContent = "修正モードです。チェックを変更して公開先を更新できます。";
+                submitButton.textContent = "更新";
+            } else {
+                label.textContent = "新規登録モードです。";
+                submitButton.textContent = "登録";
+            }
+        }
+
+        function renderRecipientList() {
+            const container = document.getElementById("recipient-list");
+            if (!currentRecipients.length) {
+                container.innerHTML = '<p class="text-gray-500">委員会を選択すると配布先候補が表示されます。</p>';
+                return;
+            }
+
+            container.innerHTML = currentRecipients.map((item, index) => {
+                const status = item.was_distributed
+                    ? '<span class="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">配布済み</span>'
+                    : '<span class="text-[11px] px-2 py-0.5 rounded bg-gray-200 text-gray-700">未配布</span>';
+                const note = item.is_current_member ? "" : '<span class="text-[11px] text-amber-700">（現在は所属外）</span>';
+                const checked = item.checked ? "checked" : "";
+                return `
+                    <label class="flex items-center justify-between gap-3 border border-gray-200 rounded px-3 py-2 bg-white">
+                        <span class="flex items-center gap-2 min-w-0">
+                            <input type="checkbox" class="recipient-checkbox" data-index="${index}" ${checked}>
+                            <span class="truncate">${escapeHtml(item.recipient_name || "未設定")} <span class="text-xs text-gray-500">${escapeHtml(item.recipient_email || "")}</span> ${note}</span>
+                        </span>
+                        <span>${status}</span>
+                    </label>
+                `;
+            }).join("");
+
+            container.querySelectorAll(".recipient-checkbox").forEach((checkbox) => {
+                checkbox.addEventListener("change", (event) => {
+                    const idx = Number(event.target.getAttribute("data-index"));
+                    currentRecipients[idx].checked = event.target.checked;
+                });
+            });
+        }
+
+        async function loadPostsByCommittee(committeeName) {
+            const select = document.getElementById("existing_post_id");
+            select.innerHTML = '<option value="">新規登録モード</option>';
+            if (!committeeName) return;
+
+            const { data, error } = await dbClient
+                .from("committee_activity_posts")
+                .select("id,activity_date,title")
+                .eq("committee_name", committeeName)
+                .order("activity_date", { ascending: false })
+                .order("id", { ascending: false })
+                .limit(100);
+
+            if (error) {
+                throw error;
+            }
+
+            (data || []).forEach((item) => {
+                const option = document.createElement("option");
+                option.value = String(item.id);
+                option.textContent = `${item.activity_date || "日付未設定"} | ${item.title || "タイトル未設定"}`;
+                select.appendChild(option);
+            });
+        }
+
+        async function loadRecipientsForPost(postId) {
+            const { data, error } = await dbClient
+                .from("committee_activity_recipients")
+                .select("recipient_member_id,recipient_email,recipient_name,committee_name")
+                .eq("post_id", postId);
+
+            if (error) {
+                throw error;
+            }
+
+            return data || [];
+        }
+
+        function mergeRecipients(baseRecipients, deliveredRecipients, committeeName) {
+            const byEmail = new Map();
+            baseRecipients.forEach((item) => {
+                byEmail.set(normalizeEmail(item.recipient_email), {
+                    ...item,
+                    committee_name: committeeName,
+                    was_distributed: false,
+                    checked: currentMode === "new"
+                });
+            });
+
+            deliveredRecipients.forEach((item) => {
+                const email = normalizeEmail(item.recipient_email);
+                const current = byEmail.get(email);
+                if (current) {
+                    current.was_distributed = true;
+                    current.checked = true;
+                    current.recipient_member_id = current.recipient_member_id || item.recipient_member_id || null;
+                    current.recipient_name = current.recipient_name || item.recipient_name || "";
+                } else {
+                    byEmail.set(email, {
+                        recipient_member_id: item.recipient_member_id || null,
+                        recipient_email: email,
+                        recipient_name: item.recipient_name || "",
+                        committee_name: committeeName,
+                        assigned_at: new Date().toISOString(),
+                        is_current_member: false,
+                        was_distributed: true,
+                        checked: true
+                    });
+                }
+            });
+
+            return Array.from(byEmail.values())
+                .filter((item) => item.recipient_email)
+                .sort((a, b) => a.recipient_name.localeCompare(b.recipient_name, "ja"));
+        }
+
+        async function refreshRecipientsByCommittee(committeeName) {
+            if (!committeeName) {
+                currentRecipients = [];
+                existingRecipientMap = new Map();
+                renderRecipientList();
+                return;
+            }
+
+            const baseRecipients = await resolveRecipients(committeeName);
+            let deliveredRecipients = [];
+            if (currentMode === "edit" && currentPostId) {
+                deliveredRecipients = await loadRecipientsForPost(currentPostId);
+            }
+
+            currentRecipients = mergeRecipients(baseRecipients, deliveredRecipients, committeeName);
+            existingRecipientMap = new Map(
+                deliveredRecipients.map((item) => [normalizeEmail(item.recipient_email), item])
+            );
+            renderRecipientList();
+        }
+
+        async function loadPostToForm(postId) {
+            const { data, error } = await dbClient
+                .from("committee_activity_posts")
+                .select("id,committee_name,activity_date,title,activity_content,attachments")
+                .eq("id", postId)
+                .single();
+
+            if (error) {
+                throw error;
+            }
+
+            document.getElementById("committee_name").value = data.committee_name || "";
+            document.getElementById("activity_date").value = data.activity_date || "";
+            document.getElementById("activity_title").value = data.title || "";
+            document.getElementById("activity_content").value = data.activity_content || "";
+            currentPostAttachments = Array.isArray(data.attachments) ? data.attachments : [];
+            currentPostId = data.id;
+            currentMode = "edit";
+            setEditModeLabel();
+            await loadPostsByCommittee(data.committee_name || "");
+            document.getElementById("existing_post_id").value = String(data.id);
+            await refreshRecipientsByCommittee(data.committee_name || "");
+        }
+
+        async function switchToNewMode() {
+            currentMode = "new";
+            currentPostId = null;
+            currentPostAttachments = [];
+            document.getElementById("existing_post_id").value = "";
+            setEditModeLabel();
+            const committeeName = document.getElementById("committee_name").value;
+            await refreshRecipientsByCommittee(committeeName);
         }
 
         async function uploadFiles(files) {
@@ -157,6 +370,11 @@
             const message = document.getElementById("form-message");
             message.textContent = "";
 
+            if (!currentUserEmail) {
+                message.textContent = "ログインメールの取得に失敗しました。再ログイン後に再試行してください。";
+                return;
+            }
+
             const committeeName = document.getElementById("committee_name").value;
             const activityDate = document.getElementById("activity_date").value;
             const title = document.getElementById("activity_title").value.trim();
@@ -168,26 +386,35 @@
                 return;
             }
 
-            let recipients = [];
-            try {
-                recipients = await resolveRecipients(committeeName);
-            } catch (error) {
-                message.textContent = "委員会所属者の取得に失敗しました: " + error.message;
+            if (!currentRecipients.length) {
+                message.textContent = "配布先候補がありません。委員会を選択してください。";
                 return;
             }
 
+            const recipients = currentRecipients.filter((item) => item.checked);
             if (recipients.length === 0) {
-                message.textContent = "この委員会に現在所属する配布対象がいません。先にメンバー設定を確認してください。";
+                message.textContent = "配布先を1人以上チェックしてください。";
                 return;
             }
 
-            let attachments = [];
             try {
-                attachments = await uploadFiles(files);
+                await loadPostsByCommittee(committeeName);
+            } catch (error) {
+                message.textContent = "既存データの取得に失敗しました: " + error.message;
+                return;
+            }
+
+            let uploadedAttachments = [];
+            try {
+                uploadedAttachments = await uploadFiles(files);
             } catch (error) {
                 message.textContent = error.message;
                 return;
             }
+
+            const attachments = (currentMode === "edit")
+                ? (currentPostAttachments || []).concat(uploadedAttachments)
+                : uploadedAttachments;
 
             const postPayload = {
                 committee_name: committeeName,
@@ -195,29 +422,59 @@
                 title,
                 activity_content: content,
                 attachments,
+                created_by_user_id: currentUserId,
                 created_by_email: currentUserEmail,
                 created_by_name: currentUserName || "未設定",
                 updated_at: new Date().toISOString()
             };
 
-            const { data: postData, error: postError } = await dbClient
-                .from("committee_activity_posts")
-                .insert(postPayload)
-                .select("id")
-                .single();
+            let targetPostId = currentPostId;
+            let postError = null;
+
+            if (currentMode === "edit" && targetPostId) {
+                const { error } = await dbClient
+                    .from("committee_activity_posts")
+                    .update(postPayload)
+                    .eq("id", targetPostId);
+                postError = error;
+            } else {
+                const { data: postData, error } = await dbClient
+                    .from("committee_activity_posts")
+                    .insert(postPayload)
+                    .select("id")
+                    .single();
+                postError = error;
+                targetPostId = postData ? postData.id : null;
+            }
 
             if (postError) {
                 message.textContent = "活動情報の保存に失敗しました: " + postError.message;
                 return;
             }
 
+            if (!targetPostId) {
+                message.textContent = "活動情報の保存後IDが取得できませんでした。";
+                return;
+            }
+
+            if (currentMode === "edit") {
+                const { error: deleteError } = await dbClient
+                    .from("committee_activity_recipients")
+                    .delete()
+                    .eq("post_id", targetPostId);
+                if (deleteError) {
+                    message.textContent = "既存配布先の更新に失敗しました: " + deleteError.message;
+                    return;
+                }
+            }
+
             const recipientRows = recipients.map((item) => ({
-                post_id: postData.id,
+                post_id: targetPostId,
                 recipient_member_id: item.recipient_member_id,
                 recipient_email: item.recipient_email,
                 recipient_name: item.recipient_name,
-                committee_name: item.committee_name,
-                assigned_at: item.assigned_at
+                committee_name: committeeName,
+                assigned_at: new Date().toISOString()
             }));
 
             const { error: recipientError } = await dbClient
@@ -229,14 +486,70 @@
                 return;
             }
 
-            message.textContent = `登録しました（配布対象 ${recipientRows.length} 人）。`;
-            document.getElementById("committee-activity-form").reset();
+            message.textContent = currentMode === "edit"
+                ? `更新しました（公開対象 ${recipientRows.length} 人）。`
+                : `登録しました（公開対象 ${recipientRows.length} 人）。`;
+
+            if (currentMode === "new") {
+                document.getElementById("committee-activity-form").reset();
+                await switchToNewMode();
+            } else {
+                await loadPostToForm(targetPostId);
+            }
         }
 
         document.getElementById("committee-activity-form").addEventListener("submit", saveCommitteeActivity);
         document.getElementById("clear-form").addEventListener("click", () => {
             document.getElementById("committee-activity-form").reset();
             document.getElementById("form-message").textContent = "";
+            currentRecipients = [];
+            existingRecipientMap = new Map();
+            currentPostAttachments = [];
+            currentMode = "new";
+            currentPostId = null;
+            setEditModeLabel();
+            renderRecipientList();
+        });
+
+        document.getElementById("check-all-recipients").addEventListener("click", () => {
+            currentRecipients = currentRecipients.map((item) => ({ ...item, checked: true }));
+            renderRecipientList();
+        });
+
+        document.getElementById("uncheck-all-recipients").addEventListener("click", () => {
+            currentRecipients = currentRecipients.map((item) => ({ ...item, checked: false }));
+            renderRecipientList();
+        });
+
+        document.getElementById("committee_name").addEventListener("change", async (event) => {
+            const committeeName = event.target.value;
+            const message = document.getElementById("form-message");
+            message.textContent = "";
+            try {
+                await loadPostsByCommittee(committeeName);
+                await switchToNewMode();
+            } catch (error) {
+                message.textContent = "委員会情報の読み込みに失敗しました: " + error.message;
+            }
+        });
+
+        document.getElementById("existing_post_id").addEventListener("change", async (event) => {
+            const postId = event.target.value;
+            const message = document.getElementById("form-message");
+            message.textContent = "";
+            try {
+                if (!postId) {
+                    await switchToNewMode();
+                    return;
+                }
+                await loadPostToForm(Number(postId));
+            } catch (error) {
+                message.textContent = "修正データの読み込みに失敗しました: " + error.message;
+            }
+        });
+
+        document.getElementById("switch-new-mode").addEventListener("click", async () => {
+            await switchToNewMode();
         });
 
         portalAuth.init({
@@ -247,8 +560,23 @@
             returnTo: "committee-activity-settings.html",
             onReady: async ({ client, session, profile }) => {
                 dbClient = client;
-                currentUserEmail = normalizeEmail((session && session.email) || (profile && profile.email) || "");
-                currentUserName = (session && session.displayName) || (profile && profile.display_name) || currentUserEmail || "未設定";
+                const sessionUser = session && session.user ? session.user : null;
+                currentUserId = sessionUser && sessionUser.id ? sessionUser.id : null;
+                currentUserEmail = normalizeEmail(
+                    (sessionUser && sessionUser.email)
+                    || (session && session.email)
+                    || (profile && profile.email)
+                    || ""
+                );
+                currentUserName =
+                    (sessionUser && (sessionUser.user_metadata && (sessionUser.user_metadata.display_name || sessionUser.user_metadata.name)))
+                    || (session && session.displayName)
+                    || (profile && profile.display_name)
+                    || currentUserEmail
+                    || "未設定";
+
+                setEditModeLabel();
+                renderRecipientList();
             }
         });
     </script>

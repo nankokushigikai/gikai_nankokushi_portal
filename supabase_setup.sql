@@ -173,6 +173,7 @@ create table if not exists public.committee_activity_posts (
     title text not null,
     activity_content text not null,
     attachments jsonb not null default '[]'::jsonb,
+    created_by_user_id uuid,
     created_by_email text not null,
     created_by_name text,
     created_at timestamptz not null default now(),
@@ -212,6 +213,13 @@ alter table public.member_directory add column if not exists access_role text no
 alter table public.member_directory add column if not exists furigana text;
 alter table public.member_directory add column if not exists giun_role text;
 alter table public.member_directory add column if not exists editorial_role text;
+alter table public.committee_activity_posts add column if not exists created_by_user_id uuid;
+
+update public.committee_activity_posts p
+set created_by_user_id = pr.user_id
+from public.profiles pr
+where p.created_by_user_id is null
+    and lower(trim(p.created_by_email)) = lower(trim(pr.email));
 
 -- 既存DB向け: 役職フィールドの値を正規化し、制約を安全に追加
 update public.member_directory
@@ -469,10 +477,12 @@ drop policy if exists committee_activity_posts_update_creator_or_admin on public
 create policy committee_activity_posts_update_creator_or_admin on public.committee_activity_posts
 for update using (
     public.is_portal_admin()
+    or created_by_user_id = auth.uid()
     or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
 )
 with check (
     public.is_portal_admin()
+    or created_by_user_id = auth.uid()
     or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
 );
 
@@ -480,6 +490,7 @@ drop policy if exists committee_activity_posts_delete_creator_or_admin on public
 create policy committee_activity_posts_delete_creator_or_admin on public.committee_activity_posts
 for delete using (
     public.is_portal_admin()
+    or created_by_user_id = auth.uid()
     or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
 );
 
@@ -501,7 +512,10 @@ for insert with check (
             select 1
             from public.committee_activity_posts p
             where p.id = post_id
-              and lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and (
+                  p.created_by_user_id = auth.uid()
+                  or lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              )
         )
     )
 );
@@ -514,7 +528,10 @@ for delete using (
         select 1
         from public.committee_activity_posts p
         where p.id = post_id
-          and lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+          and (
+              p.created_by_user_id = auth.uid()
+              or lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+          )
     )
 );
 
