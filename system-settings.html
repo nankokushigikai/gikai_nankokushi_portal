@@ -32,7 +32,7 @@
                 <h1 class="text-2xl font-bold text-gray-700">メンバー一覧表</h1>
                 <span class="text-xs sm:text-sm text-cyan-700 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-full">全員閲覧可 / 本人のみ編集可</span>
             </div>
-            <p class="text-gray-600 mb-4 text-sm">氏名をタップすると修正画面が開きます。編集できるのは自分の情報のみです。</p>
+            <p class="text-gray-600 mb-4 text-sm">氏名をタップすると詳細情報を表示します。編集できるのは自分の情報のみです。</p>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-100">
@@ -125,6 +125,46 @@
 
         </div>
     </main>
+
+    <div id="member-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl mx-4 p-6">
+            <h2 class="text-lg font-bold text-gray-800 mb-4">メンバー詳細</h2>
+            <dl class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div>
+                    <dt class="text-gray-500">氏名</dt>
+                    <dd id="detail_full_name" class="font-semibold text-gray-800">-</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">ふりがな</dt>
+                    <dd id="detail_furigana" class="font-semibold text-gray-800">-</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">郵便番号</dt>
+                    <dd id="detail_postal_code" class="font-semibold text-gray-800">-</dd>
+                </div>
+                <div class="md:col-span-2">
+                    <dt class="text-gray-500">住所</dt>
+                    <dd id="detail_address" class="font-semibold text-gray-800">-</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">電話</dt>
+                    <dd id="detail_phone" class="font-semibold text-gray-800">-</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">携帯番号</dt>
+                    <dd id="detail_mobile" class="font-semibold text-gray-800">-</dd>
+                </div>
+                <div class="md:col-span-2">
+                    <dt class="text-gray-500">gmail</dt>
+                    <dd id="detail_email" class="font-semibold text-gray-800">-</dd>
+                </div>
+            </dl>
+            <div class="mt-6 flex gap-3 justify-end">
+                <button type="button" id="member-detail-open-edit" class="bg-cyan-700 hover:bg-cyan-800 text-white px-4 py-2 rounded-lg text-sm font-semibold hidden">自分の情報を修正</button>
+                <button type="button" id="member-detail-close" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+            </div>
+        </div>
+    </div>
 
     <div id="member-edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
@@ -236,6 +276,7 @@
         let currentUserEmail = "";
         let currentUserDisplayName = "";
         let memberRows = [];
+        let detailMemberId = "";
 
         function normalizeEmail(value) {
             return String(value || "").trim().toLowerCase();
@@ -388,6 +429,31 @@
             document.getElementById("edit_gemini_api_key").value = "";
         }
 
+        function closeMemberDetailModal() {
+            document.getElementById("member-detail-modal").classList.add("hidden");
+            detailMemberId = "";
+        }
+
+        function openMemberDetailModal(item) {
+            detailMemberId = item.member_id || "";
+            document.getElementById("detail_full_name").textContent = item.full_name || "-";
+            document.getElementById("detail_furigana").textContent = item.furigana || "-";
+            document.getElementById("detail_postal_code").textContent = item.postal_code || "-";
+            document.getElementById("detail_address").textContent = item.address || "-";
+            document.getElementById("detail_phone").textContent = item.phone || "-";
+            document.getElementById("detail_mobile").textContent = item.mobile || "-";
+            document.getElementById("detail_email").textContent = item.email || "-";
+
+            const editButton = document.getElementById("member-detail-open-edit");
+            if (isOwnMemberRow(item)) {
+                editButton.classList.remove("hidden");
+            } else {
+                editButton.classList.add("hidden");
+            }
+
+            document.getElementById("member-detail-modal").classList.remove("hidden");
+        }
+
         async function openMemberEditModal(item) {
             document.getElementById("edit_member_id").value = item.member_id || "";
             document.getElementById("edit_full_name").value = item.full_name || "";
@@ -453,29 +519,26 @@
 
             memberRows.forEach((item) => {
                 const tr = document.createElement("tr");
-                const canEdit = isOwnMemberRow(item);
                 const nameText = escapeHtml(item.full_name || "");
                 const mobileText = escapeHtml(item.mobile || "-");
 
                 tr.innerHTML = `
                     <td class="p-2 border">
-                        ${canEdit
-                            ? `<button class="text-cyan-700 hover:text-cyan-900 underline" data-edit-self="${escapeHtml(item.member_id || "")}">${nameText}</button>`
-                            : `<span>${nameText}</span>`}
+                        <button class="text-cyan-700 hover:text-cyan-900 underline" data-view-member="${escapeHtml(item.member_id || "")}">${nameText}</button>
                     </td>
                     <td class="p-2 border">${mobileText}</td>
                 `;
                 tbody.appendChild(tr);
             });
 
-            tbody.querySelectorAll("button[data-edit-self]").forEach((btn) => {
+            tbody.querySelectorAll("button[data-view-member]").forEach((btn) => {
                 btn.addEventListener("click", async () => {
-                    const memberId = btn.getAttribute("data-edit-self") || "";
+                    const memberId = btn.getAttribute("data-view-member") || "";
                     const target = memberRows.find((row) => row.member_id === memberId);
-                    if (!target || !isOwnMemberRow(target)) {
+                    if (!target) {
                         return;
                     }
-                    await openMemberEditModal(target);
+                    openMemberDetailModal(target);
                 });
             });
         }
@@ -576,6 +639,21 @@
             document.getElementById("member-directory-message").textContent = "自分の情報を更新しました。";
             await loadMemberDirectory();
         }
+
+        document.getElementById("member-detail-close").addEventListener("click", closeMemberDetailModal);
+        document.getElementById("member-detail-open-edit").addEventListener("click", async () => {
+            const target = memberRows.find((row) => row.member_id === detailMemberId);
+            if (!target || !isOwnMemberRow(target)) {
+                return;
+            }
+            closeMemberDetailModal();
+            await openMemberEditModal(target);
+        });
+        document.getElementById("member-detail-modal").addEventListener("click", (event) => {
+            if (event.target && event.target.id === "member-detail-modal") {
+                closeMemberDetailModal();
+            }
+        });
 
         document.getElementById("member-edit-cancel").addEventListener("click", closeMemberEditModal);
         document.getElementById("member-edit-form").addEventListener("submit", saveOwnMember);
