@@ -29,7 +29,7 @@
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500">
             <h1 class="text-2xl font-bold mb-2 text-gray-700">活動記録</h1>
-            <p class="text-sm text-gray-600">活動記録一覧（最新10件）と、所属委員会からの資料を確認できます。</p>
+            <p class="text-sm text-gray-600">活動記録一覧（最新10件）を確認できます。</p>
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-sky-500">
@@ -40,40 +40,19 @@
                         <tr>
                             <th class="text-left p-2 border">活動日</th>
                             <th class="text-left p-2 border">活動タイトル</th>
+                            <th class="text-left p-2 border">作成者</th>
                             <th class="text-left p-2 border">活動内容</th>
+                            <th class="text-left p-2 border w-40">操作</th>
                         </tr>
                     </thead>
                     <tbody id="activity-list">
                         <tr>
-                            <td class="p-2 border text-gray-500" colspan="3">読み込み中です...</td>
+                            <td class="p-2 border text-gray-500" colspan="5">読み込み中です...</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <p id="activity-message" class="mt-3 text-sm text-gray-600"></p>
-        </section>
-
-        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-violet-500">
-            <h2 class="text-xl font-bold mb-1 text-gray-700">委員会情報一覧</h2>
-            <p id="committee-caption" class="text-sm text-gray-600 mb-4">登録時に配布された委員会活動資料を日付順に表示します。</p>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div class="border border-gray-200 rounded-lg">
-                    <ul id="committee-material-list" class="divide-y divide-gray-200">
-                        <li class="p-3 text-sm text-gray-500">資料を読み込み中です...</li>
-                    </ul>
-                </div>
-                <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    <h3 class="font-bold text-gray-700 mb-2">資料詳細</h3>
-                    <p class="text-xs text-gray-500 mb-2" id="material-date">日付: -</p>
-                    <p class="text-sm font-semibold text-gray-800 mb-2" id="material-title">タイトルを選択してください</p>
-                    <p class="text-sm text-gray-700 whitespace-pre-wrap" id="material-content">左の一覧から資料を選択すると内容を表示します。</p>
-                    <div class="mt-4">
-                        <ul id="material-attachments" class="space-y-2"></ul>
-                        <p id="material-no-attachment" class="text-sm text-gray-500">添付書類はありません。</p>
-                    </div>
-                </div>
-            </div>
-            <p id="committee-message" class="mt-3 text-sm text-gray-600"></p>
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-500">
@@ -116,7 +95,7 @@
         let currentUserId = null;
         let currentUserEmail = "";
         let currentUserName = "";
-        let currentUserCommittee = "";
+        let editingRecordId = null;
 
         function normalizeEmail(value) {
             return String(value || "").trim().toLowerCase();
@@ -129,25 +108,55 @@
             return `${parts[0]}/${parts[1]}/${parts[2]}`;
         }
 
-        function normalizeAttachments(value) {
-            if (!value) return [];
-            if (Array.isArray(value)) return value;
-            return [];
+        function setActivityFormMode(isEdit) {
+            const openButton = document.getElementById("open-activity-form");
+            const submitButton = document.querySelector("#activity-form button[type='submit']");
+            if (isEdit) {
+                openButton.textContent = "活動の記録（新規）";
+                submitButton.textContent = "更新";
+            } else {
+                openButton.textContent = "活動の記録";
+                submitButton.textContent = "保存";
+            }
         }
 
-        async function resolveCurrentMemberCommittee() {
-            if (!currentUserEmail) {
-                currentUserCommittee = "";
+        function resetActivityFormState() {
+            editingRecordId = null;
+            document.getElementById("activity-form").reset();
+            setActivityFormMode(false);
+        }
+
+        async function createOwnRecordFromFeedItem(item) {
+            const message = document.getElementById("record-message");
+            const payload = {
+                user_email: currentUserEmail,
+                user_name: currentUserName || "未設定",
+                activity_date: item.activity_date,
+                activity_title: item.raw_title || item.activity_title || "",
+                activity_content: item.activity_content || ""
+            };
+
+            const { error } = await dbClient
+                .from("activity_records")
+                .insert(payload);
+
+            if (error) {
+                message.textContent = "自分の活動記録への作成に失敗しました: " + error.message;
                 return;
             }
 
-            const { data } = await dbClient
-                .from("member_directory")
-                .select("committee")
-                .ilike("email", currentUserEmail)
-                .maybeSingle();
+            message.textContent = "活動記録を作成しました。必要に応じて修正してください。";
+            await loadActivityRecords();
+        }
 
-            currentUserCommittee = data && data.committee ? String(data.committee) : "";
+        function openEditForm(item) {
+            editingRecordId = item.id;
+            document.getElementById("record_date").value = item.activity_date || "";
+            document.getElementById("record_title").value = item.raw_title || item.activity_title || "";
+            document.getElementById("record_content").value = item.activity_content || "";
+            document.getElementById("record-message").textContent = "修正モードです。更新を押すと保存します。";
+            setActivityFormMode(true);
+            document.getElementById("activity-form").classList.remove("hidden");
         }
 
         async function loadActivityRecords() {
@@ -158,31 +167,46 @@
 
             const { data: ownRecords, error: ownError } = await dbClient
                 .from("activity_records")
-                .select("activity_date,activity_title,activity_content,created_at")
-                .order("activity_date", { ascending: false })
-                .order("created_at", { ascending: false })
-                .limit(10);
-
-            if (ownError) {
-                message.textContent = "活動記録の読込に失敗しました: " + ownError.message;
-                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="3">データを表示できませんでした。</td></tr>';
-                return;
-            }
-
-            let postQuery = dbClient
-                .from("committee_activity_posts")
-                .select("activity_date,title,activity_content,committee_name,created_at")
+                .select("id,user_name,activity_date,activity_title,activity_content,created_at")
                 .order("activity_date", { ascending: false })
                 .order("created_at", { ascending: false })
                 .limit(20);
 
-            if (currentUserId) {
-                postQuery = postQuery.eq("created_by_user_id", currentUserId);
-            } else {
-                postQuery = postQuery.eq("created_by_email", currentUserEmail);
+            if (ownError) {
+                message.textContent = "活動記録の読込に失敗しました: " + ownError.message;
+                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="5">データを表示できませんでした。</td></tr>';
+                return;
             }
 
-            const { data: ownCommitteePosts, error: postError } = await postQuery;
+            const { data: recipientRows, error: recipientError } = await dbClient
+                .from("committee_activity_recipients")
+                .select("post_id,recipient_email");
+
+            if (recipientError) {
+                message.textContent = "活動記録の一部読込に失敗しました: " + recipientError.message;
+            }
+
+            const recipientPostIds = Array.from(new Set(
+                (recipientRows || [])
+                    .filter((row) => normalizeEmail(row.recipient_email) === currentUserEmail)
+                    .map((row) => row.post_id)
+                    .filter(Boolean)
+            ));
+
+            let postQuery = dbClient
+                .from("committee_activity_posts")
+                .select("id,activity_date,title,activity_content,committee_name,created_by_name,created_by_email,created_at")
+                .order("activity_date", { ascending: false })
+                .order("created_at", { ascending: false })
+                .limit(20);
+
+            if (recipientPostIds.length > 0) {
+                postQuery = postQuery.in("id", recipientPostIds);
+            } else {
+                postQuery = postQuery.limit(0);
+            }
+
+            const { data: relatedCommitteePosts, error: postError } = await postQuery;
 
             if (postError) {
                 message.textContent = "活動記録の一部読込に失敗しました: " + postError.message;
@@ -191,19 +215,25 @@
             const mergedRows = [];
             (ownRecords || []).forEach((item) => {
                 mergedRows.push({
+                    id: item.id,
                     activity_date: item.activity_date,
                     activity_title: item.activity_title || "",
+                    raw_title: item.activity_title || "",
                     activity_content: item.activity_content || "",
+                    creator_name: item.user_name || currentUserName || "自分",
                     created_at: item.created_at || null,
                     source: "activity"
                 });
             });
 
-            (ownCommitteePosts || []).forEach((item) => {
+            (relatedCommitteePosts || []).forEach((item) => {
                 mergedRows.push({
+                    id: item.id,
                     activity_date: item.activity_date,
                     activity_title: `[委員会活動] ${item.title || ""}`,
+                    raw_title: item.title || "",
                     activity_content: item.activity_content || "",
+                    creator_name: item.created_by_name || item.created_by_email || "不明",
                     created_at: item.created_at || null,
                     source: "committee"
                 });
@@ -223,127 +253,53 @@
                 .slice(0, 10);
 
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="3">記録はありません。</td></tr>';
+                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="5">記録はありません。</td></tr>';
                 return;
             }
 
             rows.forEach((item) => {
                 const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td class="p-2 border">${formatDate(item.activity_date)}</td>
-                    <td class="p-2 border">${item.activity_title || ""}</td>
-                    <td class="p-2 border whitespace-pre-wrap">${item.activity_content || ""}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
 
-        function renderMaterialDetail(item) {
-            document.getElementById("material-date").textContent = "日付: " + formatDate(item.activity_date || "");
-            document.getElementById("material-title").textContent = item.title || "";
-            document.getElementById("material-content").textContent = item.activity_content || "";
+                const dateTd = document.createElement("td");
+                dateTd.className = "p-2 border";
+                dateTd.textContent = formatDate(item.activity_date);
 
-            const attachmentsList = document.getElementById("material-attachments");
-            attachmentsList.innerHTML = "";
-            const noAttachment = document.getElementById("material-no-attachment");
+                const titleTd = document.createElement("td");
+                titleTd.className = "p-2 border";
+                titleTd.textContent = item.activity_title || "";
 
-            const attachments = normalizeAttachments(item.attachments);
-            if (attachments.length > 0) {
-                attachments.forEach((attachment, index) => {
-                    const li = document.createElement("li");
-                    const a = document.createElement("a");
-                    a.href = attachment.url || "#";
-                    a.target = "_blank";
-                    a.rel = "noopener noreferrer";
-                    a.className = "inline-block text-sm font-semibold text-violet-700 hover:text-violet-900";
-                    a.textContent = attachment.name || `添付ファイル ${index + 1}`;
-                    li.appendChild(a);
-                    attachmentsList.appendChild(li);
-                });
-                noAttachment.classList.add("hidden");
-            } else {
-                noAttachment.classList.remove("hidden");
-            }
-        }
+                const creatorTd = document.createElement("td");
+                creatorTd.className = "p-2 border";
+                creatorTd.textContent = item.creator_name || "";
 
-        async function loadCommitteeMaterials() {
-            const list = document.getElementById("committee-material-list");
-            const message = document.getElementById("committee-message");
-            const caption = document.getElementById("committee-caption");
-            list.innerHTML = "";
-            message.textContent = "";
+                const contentTd = document.createElement("td");
+                contentTd.className = "p-2 border whitespace-pre-wrap";
+                contentTd.textContent = item.activity_content || "";
 
-            if (!currentUserEmail) {
-                caption.textContent = "ログイン情報を確認できないため、資料を表示できません。";
-                list.innerHTML = '<li class="p-3 text-sm text-gray-500">ログイン情報が不足しています。</li>';
-                return;
-            }
-
-            caption.textContent = "あなたに配布された委員会活動資料を日付順に表示します。";
-
-            const { data: recipientRows, error: recipientError } = await dbClient
-                .from("committee_activity_recipients")
-                .select("post_id")
-                .eq("recipient_email", currentUserEmail);
-
-            if (recipientError) {
-                message.textContent = "配布先情報の読込に失敗しました: " + recipientError.message;
-                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料を表示できませんでした。</li>';
-                return;
-            }
-
-            const postIds = Array.from(new Set((recipientRows || []).map((row) => row.post_id).filter(Boolean)));
-            if (postIds.length === 0) {
-                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料はありません。</li>';
-                document.getElementById("material-date").textContent = "日付: -";
-                document.getElementById("material-title").textContent = "資料はありません";
-                document.getElementById("material-content").textContent = "配布された委員会活動資料がありません。";
-                document.getElementById("material-attachments").innerHTML = "";
-                document.getElementById("material-no-attachment").classList.remove("hidden");
-                return;
-            }
-
-            const { data, error } = await dbClient
-                .from("committee_activity_posts")
-                .select("id,committee_name,activity_date,title,activity_content,attachments,created_at")
-                .in("id", postIds)
-                .order("activity_date", { ascending: false })
-                .order("created_at", { ascending: false });
-
-            if (error) {
-                message.textContent = "委員会情報の読込に失敗しました: " + error.message;
-                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料を表示できませんでした。</li>';
-                return;
-            }
-
-            const rows = data || [];
-            if (rows.length === 0) {
-                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料はありません。</li>';
-                document.getElementById("material-date").textContent = "日付: -";
-                document.getElementById("material-title").textContent = "資料はありません";
-                document.getElementById("material-content").textContent = "配布された資料が登録されていません。";
-                document.getElementById("material-attachments").innerHTML = "";
-                document.getElementById("material-no-attachment").classList.remove("hidden");
-                return;
-            }
-
-            rows.forEach((item, index) => {
-                const li = document.createElement("li");
-                li.className = "p-3";
-                const button = document.createElement("button");
-                button.type = "button";
-                button.className = "w-full text-left hover:bg-violet-50 rounded p-2";
-                button.innerHTML = `
-                    <div class="text-xs text-gray-500 mb-1">${formatDate(item.activity_date)} / ${item.committee_name || ""}</div>
-                    <div class="text-sm font-semibold text-gray-800">${item.title || ""}</div>
-                `;
-                button.addEventListener("click", () => renderMaterialDetail(item));
-                li.appendChild(button);
-                list.appendChild(li);
-
-                if (index === 0) {
-                    renderMaterialDetail(item);
+                const actionTd = document.createElement("td");
+                actionTd.className = "p-2 border";
+                if (item.source === "activity") {
+                    const editButton = document.createElement("button");
+                    editButton.type = "button";
+                    editButton.className = "bg-sky-500 hover:bg-sky-600 text-white px-3 py-1 rounded text-xs font-semibold";
+                    editButton.textContent = "修正";
+                    editButton.addEventListener("click", () => openEditForm(item));
+                    actionTd.appendChild(editButton);
+                } else {
+                    const createButton = document.createElement("button");
+                    createButton.type = "button";
+                    createButton.className = "bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs font-semibold";
+                    createButton.textContent = "自分の記録を作成";
+                    createButton.addEventListener("click", () => createOwnRecordFromFeedItem(item));
+                    actionTd.appendChild(createButton);
                 }
+
+                tr.appendChild(dateTd);
+                tr.appendChild(titleTd);
+                tr.appendChild(creatorTd);
+                tr.appendChild(contentTd);
+                tr.appendChild(actionTd);
+                tbody.appendChild(tr);
             });
         }
 
@@ -364,17 +320,27 @@
                 return;
             }
 
-            const { error } = await dbClient
-                .from("activity_records")
-                .insert(payload);
+            let error = null;
+            if (editingRecordId) {
+                const result = await dbClient
+                    .from("activity_records")
+                    .update(payload)
+                    .eq("id", editingRecordId);
+                error = result.error;
+            } else {
+                const result = await dbClient
+                    .from("activity_records")
+                    .insert(payload);
+                error = result.error;
+            }
 
             if (error) {
                 message.textContent = "保存に失敗しました: " + error.message;
                 return;
             }
 
-            message.textContent = "活動記録を保存しました。";
-            document.getElementById("activity-form").reset();
+            message.textContent = editingRecordId ? "活動記録を更新しました。" : "活動記録を保存しました。";
+            resetActivityFormState();
             document.getElementById("activity-form").classList.add("hidden");
             await loadActivityRecords();
         }
@@ -385,6 +351,7 @@
         });
 
         document.getElementById("cancel-activity-form").addEventListener("click", () => {
+            resetActivityFormState();
             document.getElementById("activity-form").classList.add("hidden");
         });
 
@@ -403,9 +370,7 @@
                 currentUserEmail = normalizeEmail((sessionUser && sessionUser.email) || (session && session.email) || (profile && profile.email) || "");
                 currentUserName = (session && session.displayName) || (profile && profile.display_name) || currentUserEmail || "未設定";
 
-                await resolveCurrentMemberCommittee();
                 await loadActivityRecords();
-                await loadCommitteeMaterials();
             }
         });
     </script>
