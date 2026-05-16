@@ -97,8 +97,36 @@ create table if not exists public.announcements (
     constraint announcements_time_check check (start_time <= end_time)
 );
 
+create table if not exists public.activity_records (
+    id bigserial primary key,
+    user_email text not null,
+    user_name text,
+    activity_date date not null,
+    activity_title text not null,
+    activity_content text not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.committee_materials (
+    id bigserial primary key,
+    committee_name text not null check (committee_name in ('総務委員会', '産業建設委員会', '教育民生委員会', '議会運営委員会', '編集委員会')),
+    material_date date not null,
+    title text not null,
+    content text not null,
+    attachment_url text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
 create index if not exists announcements_notice_date_idx
 on public.announcements (notice_date desc, start_time asc);
+
+create index if not exists activity_records_user_date_idx
+on public.activity_records (user_email, activity_date desc, created_at desc);
+
+create index if not exists committee_materials_committee_date_idx
+on public.committee_materials (committee_name, material_date desc, created_at desc);
 
 alter table public.member_directory add column if not exists is_current boolean not null default true;
 alter table public.member_directory add column if not exists access_role text not null default '使用者';
@@ -145,6 +173,8 @@ alter table public.meeting_settings enable row level security;
 alter table public.member_positions_master enable row level security;
 alter table public.member_directory enable row level security;
 alter table public.announcements enable row level security;
+alter table public.activity_records enable row level security;
+alter table public.committee_materials enable row level security;
 
 -- profiles ポリシー: 認証ユーザー向けのみ
 drop policy if exists profiles_select_own_or_admin on public.profiles;
@@ -281,6 +311,57 @@ with check (public.is_portal_admin());
 
 drop policy if exists announcements_delete_admin on public.announcements;
 create policy announcements_delete_admin on public.announcements
+for delete using (public.is_portal_admin());
+
+-- activity_records ポリシー（本人データのみ読み書き可）
+drop policy if exists activity_records_select_own on public.activity_records;
+create policy activity_records_select_own on public.activity_records
+for select using (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists activity_records_insert_own on public.activity_records;
+create policy activity_records_insert_own on public.activity_records
+for insert with check (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists activity_records_update_own on public.activity_records;
+create policy activity_records_update_own on public.activity_records
+for update using (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+)
+with check (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists activity_records_delete_own on public.activity_records;
+create policy activity_records_delete_own on public.activity_records
+for delete using (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+-- committee_materials ポリシー（全員閲覧可、管理者のみ書き込み）
+drop policy if exists committee_materials_select_authenticated on public.committee_materials;
+create policy committee_materials_select_authenticated on public.committee_materials
+for select using (auth.uid() is not null);
+
+drop policy if exists committee_materials_insert_admin on public.committee_materials;
+create policy committee_materials_insert_admin on public.committee_materials
+for insert with check (public.is_portal_admin());
+
+drop policy if exists committee_materials_update_admin on public.committee_materials;
+create policy committee_materials_update_admin on public.committee_materials
+for update using (public.is_portal_admin())
+with check (public.is_portal_admin());
+
+drop policy if exists committee_materials_delete_admin on public.committee_materials;
+create policy committee_materials_delete_admin on public.committee_materials
 for delete using (public.is_portal_admin());
 
 -- ----------------------------------------------------------------------

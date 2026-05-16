@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>活動記録 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">活動記録</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4 space-y-6">
+        <div class="mb-2">
+            <a href="index.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>ポータルに戻る
+            </a>
+        </div>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500">
+            <h1 class="text-2xl font-bold mb-2 text-gray-700">活動記録</h1>
+            <p class="text-sm text-gray-600">活動記録一覧（最新10件）と、所属委員会からの資料を確認できます。</p>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-sky-500">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">活動記録一覧（最新10件）</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="text-left p-2 border">活動日</th>
+                            <th class="text-left p-2 border">活動タイトル</th>
+                            <th class="text-left p-2 border">活動内容</th>
+                        </tr>
+                    </thead>
+                    <tbody id="activity-list">
+                        <tr>
+                            <td class="p-2 border text-gray-500" colspan="3">読み込み中です...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p id="activity-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-violet-500">
+            <h2 class="text-xl font-bold mb-1 text-gray-700">委員会情報一覧</h2>
+            <p id="committee-caption" class="text-sm text-gray-600 mb-4">所属委員会の資料を日付順に表示します。</p>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="border border-gray-200 rounded-lg">
+                    <ul id="committee-material-list" class="divide-y divide-gray-200">
+                        <li class="p-3 text-sm text-gray-500">資料を読み込み中です...</li>
+                    </ul>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    <h3 class="font-bold text-gray-700 mb-2">資料詳細</h3>
+                    <p class="text-xs text-gray-500 mb-2" id="material-date">日付: -</p>
+                    <p class="text-sm font-semibold text-gray-800 mb-2" id="material-title">タイトルを選択してください</p>
+                    <p class="text-sm text-gray-700 whitespace-pre-wrap" id="material-content">左の一覧から資料を選択すると内容を表示します。</p>
+                    <div class="mt-4">
+                        <a id="material-attachment" href="#" target="_blank" rel="noopener noreferrer" class="hidden inline-block text-sm font-semibold text-violet-700 hover:text-violet-900">添付書類を開く</a>
+                        <p id="material-no-attachment" class="text-sm text-gray-500">添付書類はありません。</p>
+                    </div>
+                </div>
+            </div>
+            <p id="committee-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-500">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 class="text-xl font-bold text-gray-700">活動の記録</h2>
+                <button id="open-activity-form" type="button" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">活動の記録</button>
+            </div>
+
+            <form id="activity-form" class="grid grid-cols-1 md:grid-cols-2 gap-4 hidden">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">活動日</label>
+                    <input id="record_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">活動タイトル</label>
+                    <input id="record_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 総務委員会の現地確認">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">活動内容</label>
+                    <textarea id="record_content" rows="4" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="活動内容を入力"></textarea>
+                </div>
+                <div class="md:col-span-2 flex gap-3">
+                    <button type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">保存</button>
+                    <button id="cancel-activity-form" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+                </div>
+            </form>
+            <p id="record-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        let dbClient = null;
+        let currentUserEmail = "";
+        let currentUserName = "";
+        let currentUserCommittee = "";
+
+        function normalizeEmail(value) {
+            return String(value || "").trim().toLowerCase();
+        }
+
+        function formatDate(value) {
+            if (!value) return "";
+            const parts = String(value).split("-");
+            if (parts.length !== 3) return String(value);
+            return `${parts[0]}/${parts[1]}/${parts[2]}`;
+        }
+
+        async function resolveCurrentMemberCommittee() {
+            if (!currentUserEmail) {
+                currentUserCommittee = "";
+                return;
+            }
+
+            const { data } = await dbClient
+                .from("member_directory")
+                .select("committee")
+                .ilike("email", currentUserEmail)
+                .maybeSingle();
+
+            currentUserCommittee = data && data.committee ? String(data.committee) : "";
+        }
+
+        async function loadActivityRecords() {
+            const tbody = document.getElementById("activity-list");
+            const message = document.getElementById("activity-message");
+            tbody.innerHTML = "";
+            message.textContent = "";
+
+            const { data, error } = await dbClient
+                .from("activity_records")
+                .select("activity_date,activity_title,activity_content")
+                .order("activity_date", { ascending: false })
+                .order("created_at", { ascending: false })
+                .limit(10);
+
+            if (error) {
+                message.textContent = "活動記録の読込に失敗しました: " + error.message;
+                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="3">データを表示できませんでした。</td></tr>';
+                return;
+            }
+
+            const rows = data || [];
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="3">記録はありません。</td></tr>';
+                return;
+            }
+
+            rows.forEach((item) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td class="p-2 border">${formatDate(item.activity_date)}</td>
+                    <td class="p-2 border">${item.activity_title || ""}</td>
+                    <td class="p-2 border whitespace-pre-wrap">${item.activity_content || ""}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderMaterialDetail(item) {
+            document.getElementById("material-date").textContent = "日付: " + formatDate(item.material_date || "");
+            document.getElementById("material-title").textContent = item.title || "";
+            document.getElementById("material-content").textContent = item.content || "";
+
+            const link = document.getElementById("material-attachment");
+            const noAttachment = document.getElementById("material-no-attachment");
+            if (item.attachment_url) {
+                link.href = item.attachment_url;
+                link.classList.remove("hidden");
+                noAttachment.classList.add("hidden");
+            } else {
+                link.classList.add("hidden");
+                noAttachment.classList.remove("hidden");
+            }
+        }
+
+        async function loadCommitteeMaterials() {
+            const list = document.getElementById("committee-material-list");
+            const message = document.getElementById("committee-message");
+            const caption = document.getElementById("committee-caption");
+            list.innerHTML = "";
+            message.textContent = "";
+
+            if (!currentUserCommittee) {
+                caption.textContent = "所属委員会が未設定のため、資料を表示できません。";
+                list.innerHTML = '<li class="p-3 text-sm text-gray-500">所属委員会が未設定です。</li>';
+                return;
+            }
+
+            caption.textContent = `所属委員会（${currentUserCommittee}）の資料を日付順に表示します。`;
+
+            const { data, error } = await dbClient
+                .from("committee_materials")
+                .select("id,committee_name,material_date,title,content,attachment_url")
+                .eq("committee_name", currentUserCommittee)
+                .order("material_date", { ascending: false })
+                .order("created_at", { ascending: false });
+
+            if (error) {
+                message.textContent = "委員会情報の読込に失敗しました: " + error.message;
+                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料を表示できませんでした。</li>';
+                return;
+            }
+
+            const rows = data || [];
+            if (rows.length === 0) {
+                list.innerHTML = '<li class="p-3 text-sm text-gray-500">資料はありません。</li>';
+                document.getElementById("material-date").textContent = "日付: -";
+                document.getElementById("material-title").textContent = "資料はありません";
+                document.getElementById("material-content").textContent = "所属委員会に紐づく資料が登録されていません。";
+                document.getElementById("material-attachment").classList.add("hidden");
+                document.getElementById("material-no-attachment").classList.remove("hidden");
+                return;
+            }
+
+            rows.forEach((item, index) => {
+                const li = document.createElement("li");
+                li.className = "p-3";
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "w-full text-left hover:bg-violet-50 rounded p-2";
+                button.innerHTML = `
+                    <div class="text-xs text-gray-500 mb-1">${formatDate(item.material_date)}</div>
+                    <div class="text-sm font-semibold text-gray-800">${item.title || ""}</div>
+                `;
+                button.addEventListener("click", () => renderMaterialDetail(item));
+                li.appendChild(button);
+                list.appendChild(li);
+
+                if (index === 0) {
+                    renderMaterialDetail(item);
+                }
+            });
+        }
+
+        async function saveActivityRecord(event) {
+            event.preventDefault();
+
+            const payload = {
+                user_email: currentUserEmail,
+                user_name: currentUserName || "未設定",
+                activity_date: document.getElementById("record_date").value,
+                activity_title: document.getElementById("record_title").value.trim(),
+                activity_content: document.getElementById("record_content").value.trim()
+            };
+
+            const message = document.getElementById("record-message");
+            if (!payload.activity_date || !payload.activity_title || !payload.activity_content) {
+                message.textContent = "活動日、活動タイトル、活動内容を入力してください。";
+                return;
+            }
+
+            const { error } = await dbClient
+                .from("activity_records")
+                .insert(payload);
+
+            if (error) {
+                message.textContent = "保存に失敗しました: " + error.message;
+                return;
+            }
+
+            message.textContent = "活動記録を保存しました。";
+            document.getElementById("activity-form").reset();
+            document.getElementById("activity-form").classList.add("hidden");
+            await loadActivityRecords();
+        }
+
+        document.getElementById("open-activity-form").addEventListener("click", () => {
+            document.getElementById("activity-form").classList.remove("hidden");
+            document.getElementById("record-message").textContent = "";
+        });
+
+        document.getElementById("cancel-activity-form").addEventListener("click", () => {
+            document.getElementById("activity-form").classList.add("hidden");
+        });
+
+        document.getElementById("activity-form").addEventListener("submit", saveActivityRecord);
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            hideDisplayName: true,
+            returnTo: "activity-records.html",
+            onReady: async ({ client, session, profile }) => {
+                dbClient = client;
+                currentUserEmail = normalizeEmail((session && session.email) || (profile && profile.email) || "");
+                currentUserName = (session && session.displayName) || (profile && profile.display_name) || currentUserEmail || "未設定";
+
+                await resolveCurrentMemberCommittee();
+                await loadActivityRecords();
+                await loadCommitteeMaterials();
+            }
+        });
+    </script>
+</body>
+</html>
