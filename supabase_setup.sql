@@ -199,6 +199,9 @@ create table if not exists public.committee_activity_recipients (
     assigned_at timestamptz not null default now()
 );
 
+-- 既存テーブル向けカラム追加（CREATE TABLE IF NOT EXISTS では既存テーブルには反映されないため）
+alter table public.announcements add column if not exists visibility text not null default 'all' check (visibility in ('all', 'specific'));
+
 create index if not exists announcements_notice_date_idx
 on public.announcements (notice_date desc, start_time asc);
 

@@ -99,6 +99,25 @@
                     <label class="text-sm font-semibold text-gray-700">備考</label>
                     <input id="edit_remarks" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">配信対象</label>
+                    <div class="mt-2 space-y-2">
+                        <label class="flex items-center gap-2">
+                            <input id="edit_visibility_all" type="radio" name="edit_visibility" value="all" checked class="w-4 h-4">
+                            <span class="text-sm">全員に配信</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input id="edit_visibility_specific" type="radio" name="edit_visibility" value="specific" class="w-4 h-4">
+                            <span class="text-sm">特定のメンバーのみに配信</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="edit-specific-members-section" class="md:col-span-2 hidden">
+                    <label class="text-sm font-semibold text-gray-700 block mb-2">配信対象メンバー</label>
+                    <div id="edit-members-list" class="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto bg-gray-50">
+                        <p class="text-sm text-gray-500">メンバー読み込み中...</p>
+                    </div>
+                </div>
                 <div class="md:col-span-2 flex gap-3 justify-end pt-2">
                     <button type="button" id="announcement-edit-cancel" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
                     <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">保存</button>
@@ -119,6 +138,8 @@
         let dbClient = null;
         let currentRole = "viewer";
         let currentUserEmail = "";
+        let allMembers = [];
+        let currentEditingAnnouncementNo = null;
         let currentOwnerName = "未設定";
         const announcementByNo = new Map();
 
@@ -157,6 +178,7 @@
         }
 
         function openEditModal(item) {
+            currentEditingAnnouncementNo = Number(item.no || "");
             document.getElementById("edit_notice_no").value = String(item.no || "");
             document.getElementById("edit_notice_date").value = item.notice_date || "";
             document.getElementById("edit_start_time").value = String(item.start_time || "").slice(0, 5);
@@ -167,6 +189,19 @@
             document.getElementById("edit_contact_phone").value = item.contact_phone || "";
             document.getElementById("edit_contact_email").value = item.contact_email || "";
             document.getElementById("edit_remarks").value = item.remarks || "";
+            
+            // 配信対象を設定
+            const visibility = item.visibility || 'all';
+            document.getElementById("edit_visibility_all").checked = (visibility === 'all');
+            document.getElementById("edit_visibility_specific").checked = (visibility === 'specific');
+            
+            if (visibility === 'specific') {
+                document.getElementById("edit-specific-members-section").classList.remove("hidden");
+                loadEditMembersList(item.no);
+            } else {
+                document.getElementById("edit-specific-members-section").classList.add("hidden");
+            }
+            
             document.getElementById("announcement-edit-message").textContent = "";
             document.getElementById("announcement-edit-modal").classList.remove("hidden");
         }
@@ -175,6 +210,18 @@
             event.preventDefault();
 
             const noValue = Number(document.getElementById("edit_notice_no").value);
+            const visibility = document.querySelector('input[name="edit_visibility"]:checked').value;
+            let selectedMembers = [];
+            
+            if (visibility === "specific") {
+                const checkboxes = document.querySelectorAll("#edit-members-list .member-checkbox:checked");
+                if (checkboxes.length === 0) {
+                    document.getElementById("announcement-edit-message").textContent = "配信対象メンバーを選択してください。";
+                    return;
+                }
+                selectedMembers = Array.from(checkboxes).map(cb => cb.value);
+            }
+
             const payload = {
                 notice_date: document.getElementById("edit_notice_date").value,
                 start_time: document.getElementById("edit_start_time").value,
@@ -185,6 +232,7 @@
                 contact_phone: document.getElementById("edit_contact_phone").value.trim() || null,
                 contact_email: document.getElementById("edit_contact_email").value.trim() || null,
                 remarks: document.getElementById("edit_remarks").value.trim() || null,
+                visibility: visibility,
                 updated_at: new Date().toISOString()
             };
 
@@ -209,9 +257,72 @@
                 return;
             }
 
+            // 配信対象を更新
+            if (visibility === "specific") {
+                // 既存の配信対象を削除
+                await dbClient
+                    .from("announcement_recipients")
+                    .delete()
+                    .eq("announcement_no", noValue);
+
+                // 新しい配信対象を挿入
+                const recipients = selectedMembers.map(email => {
+                    const member = allMembers.find(m => m.email === email);
+                    return {
+                        announcement_no: noValue,
+                        recipient_email: email,
+                        recipient_name: member?.full_name || email
+                    };
+                });
+
+                const { error: recipientError } = await dbClient
+                    .from("announcement_recipients")
+                    .insert(recipients);
+
+                if (recipientError) {
+                    editMessage.textContent = "配信対象の保存に失敗しました: " + recipientError.message;
+                    return;
+                }
+            } else {
+                // 'all' の場合は配信対象を削除
+                await dbClient
+                    .from("announcement_recipients")
+                    .delete()
+                    .eq("announcement_no", noValue);
+            }
+
             closeEditModal();
             document.getElementById("announcement-message").textContent = "修正しました。";
             await loadAnnouncements();
+        }
+
+        async function loadEditMembersList(announcementNo) {
+            const container = document.getElementById("edit-members-list");
+            container.innerHTML = '<p class="text-sm text-gray-500">メンバー読み込み中...</p>';
+
+            // 既存の配信対象メンバーを取得
+            const { data: recipients, error: recipientError } = await dbClient
+                .from("announcement_recipients")
+                .select("recipient_email")
+                .eq("announcement_no", announcementNo);
+
+            if (recipientError) {
+                console.error("配信対象読み込みエラー:", recipientError);
+            }
+
+            const selectedEmails = new Set((recipients || []).map(r => r.recipient_email));
+
+            if (allMembers.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-500">メンバーがいません。</p>';
+                return;
+            }
+
+            container.innerHTML = allMembers.map((member, idx) => `
+                <label class="flex items-center gap-2 p-2 hover:bg-white rounded cursor-pointer">
+                    <input type="checkbox" value="${member.email}" class="member-checkbox w-4 h-4" ${selectedEmails.has(member.email) ? 'checked' : ''}>
+                    <span class="text-sm">${member.full_name} (${member.email})</span>
+                </label>
+            `).join("");
         }
 
         async function loadAnnouncements() {
@@ -286,6 +397,21 @@
             }
         });
 
+        // 編集画面の配信対象の表示・非表示切り替え
+        document.querySelectorAll('input[name="edit_visibility"]').forEach(radio => {
+            radio.addEventListener("change", async () => {
+                const section = document.getElementById("edit-specific-members-section");
+                if (radio.value === "specific" && radio.checked) {
+                    section.classList.remove("hidden");
+                    if (currentEditingAnnouncementNo) {
+                        await loadEditMembersList(currentEditingAnnouncementNo);
+                    }
+                } else {
+                    section.classList.add("hidden");
+                }
+            });
+        });
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -300,6 +426,18 @@
                 if (currentRole === "admin") {
                     document.getElementById("announcement-edit-note").classList.remove("hidden");
                 }
+                
+                // メンバーを読み込む
+                const { data: members } = await dbClient
+                    .from("member_directory")
+                    .select("email, full_name")
+                    .eq("is_current", true)
+                    .order("full_name");
+                
+                if (members) {
+                    allMembers = members;
+                }
+                
                 await loadAnnouncements();
             }
         });
