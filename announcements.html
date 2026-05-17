@@ -165,6 +165,22 @@
                 .replace(/'/g, "&#39;");
         }
 
+            function isAnnouncementRecipientsTableMissing(error) {
+                const message = String(error?.message || "").toLowerCase();
+                const details = String(error?.details || "").toLowerCase();
+                const hint = String(error?.hint || "").toLowerCase();
+                return (
+                    message.includes("could not find the table 'public.announcement_recipients'") ||
+                    message.includes('relation "public.announcement_recipients" does not exist') ||
+                    details.includes("public.announcement_recipients") ||
+                    hint.includes("public.announcement_recipients")
+                );
+            }
+
+            function buildAnnouncementRecipientsMissingMessage() {
+                return "配信対象テーブル(public.announcement_recipients)が未反映です。Supabase SQL Editor で supabase_setup.sql を実行後、NOTIFY pgrst, 'reload schema'; を実行してください。";
+            }
+
         function formatDate(dateValue) {
             if (!dateValue) return "";
             const parts = String(dateValue).split("-");
@@ -335,10 +351,17 @@
             // 配信対象を更新
             if (visibility === "specific") {
                 // 既存の配信対象を削除
-                await dbClient
+                const { error: deleteRecipientError } = await dbClient
                     .from("announcement_recipients")
                     .delete()
                     .eq("announcement_no", noValue);
+
+                if (deleteRecipientError) {
+                    editMessage.textContent = isAnnouncementRecipientsTableMissing(deleteRecipientError)
+                        ? buildAnnouncementRecipientsMissingMessage()
+                        : "配信対象の更新準備に失敗しました: " + deleteRecipientError.message;
+                    return;
+                }
 
                 // 新しい配信対象を挿入
                 const recipients = selectedMembers.map(email => {
@@ -355,15 +378,24 @@
                     .insert(recipients);
 
                 if (recipientError) {
-                    editMessage.textContent = "配信対象の保存に失敗しました: " + recipientError.message;
+                    editMessage.textContent = isAnnouncementRecipientsTableMissing(recipientError)
+                        ? buildAnnouncementRecipientsMissingMessage()
+                        : "配信対象の保存に失敗しました: " + recipientError.message;
                     return;
                 }
             } else {
                 // 'all' の場合は配信対象を削除
-                await dbClient
+                const { error: deleteRecipientError } = await dbClient
                     .from("announcement_recipients")
                     .delete()
                     .eq("announcement_no", noValue);
+
+                if (deleteRecipientError) {
+                    editMessage.textContent = isAnnouncementRecipientsTableMissing(deleteRecipientError)
+                        ? buildAnnouncementRecipientsMissingMessage()
+                        : "配信対象の削除に失敗しました: " + deleteRecipientError.message;
+                    return;
+                }
             }
 
             closeEditModal();

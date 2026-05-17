@@ -926,3 +926,7 @@ for update using (auth.uid() is not null);
 drop policy if exists general_question_updates_delete_authenticated on public.general_question_updates;
 create policy general_question_updates_delete_authenticated on public.general_question_updates
 for delete using (auth.uid() is not null);
+
+-- PostgREST のスキーマキャッシュを明示的に再読込
+-- 追加テーブルが API 経由で見えない場合の保険
+notify pgrst, 'reload schema';

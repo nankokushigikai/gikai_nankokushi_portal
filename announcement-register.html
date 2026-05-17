@@ -116,6 +116,31 @@
         let currentOwnerName = "";
         let allMembers = [];
 
+            function escapeHtml(value) {
+                return String(value || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/\"/g, "&quot;")
+                    .replace(/'/g, "&#39;");
+            }
+
+            function isAnnouncementRecipientsTableMissing(error) {
+                const message = String(error?.message || "").toLowerCase();
+                const details = String(error?.details || "").toLowerCase();
+                const hint = String(error?.hint || "").toLowerCase();
+                return (
+                    message.includes("could not find the table 'public.announcement_recipients'") ||
+                    message.includes('relation "public.announcement_recipients" does not exist') ||
+                    details.includes("public.announcement_recipients") ||
+                    hint.includes("public.announcement_recipients")
+                );
+            }
+
+            function buildAnnouncementRecipientsMissingMessage() {
+                return "配信対象テーブル(public.announcement_recipients)が未反映です。Supabase SQL Editor で supabase_setup.sql を実行後、NOTIFY pgrst, 'reload schema'; を実行してください。";
+            }
+
         const MEMBER_GROUPS = [
             { id: "leaders", label: "正副議長" },
             { id: "giun", label: "議会運営委員会" },
@@ -302,7 +327,9 @@
                     .insert(recipients);
 
                 if (recipientError) {
-                    document.getElementById("announcement-message").textContent = "配信対象の保存に失敗しました: " + recipientError.message;
+                        document.getElementById("announcement-message").textContent = isAnnouncementRecipientsTableMissing(recipientError)
+                            ? buildAnnouncementRecipientsMissingMessage()
+                            : "配信対象の保存に失敗しました: " + recipientError.message;
                     return;
                 }
             }
