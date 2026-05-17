@@ -206,22 +206,71 @@
                 return;
             }
 
-            // visibility='all' のお知らせと、自分が配信対象のお知らせを取得
-            const { data, error } = await client
-                .from("announcements")
-                .select("notice_date,start_time,end_time,title,content,visibility")
-                .or(`visibility.eq.all,announcement_recipients(recipient_email).eq.${userEmail}`)
-                .order("notice_date", { ascending: true })
-                .order("start_time", { ascending: true })
-                .limit(3);
+            const baseSelect = "no,notice_date,start_time,end_time,title,content,visibility";
 
-            if (error) {
-                console.error("お知らせ読み込みエラー:", error);
+            // 1) 全員配信を取得
+            const { data: allData, error: allError } = await client
+                .from("announcements")
+                .select(baseSelect)
+                .eq("visibility", "all");
+
+            if (allError) {
+                console.error("お知らせ読み込みエラー(全員配信):", allError);
                 renderAnnouncements([]);
                 return;
             }
 
-            renderAnnouncements(data || []);
+            let specificData = [];
+            if (userEmail) {
+                // 2) 自分向け配信の announcement_no を取得
+                const { data: recipientRows, error: recipientError } = await client
+                    .from("announcement_recipients")
+                    .select("announcement_no")
+                    .eq("recipient_email", userEmail);
+
+                if (recipientError) {
+                    console.error("お知らせ読み込みエラー(配信対象):", recipientError);
+                    renderAnnouncements([]);
+                    return;
+                }
+
+                const announcementNos = Array.from(
+                    new Set((recipientRows || []).map((row) => Number(row.announcement_no)).filter((no) => Number.isFinite(no)))
+                );
+
+                if (announcementNos.length > 0) {
+                    const { data: specificRows, error: specificError } = await client
+                        .from("announcements")
+                        .select(baseSelect)
+                        .in("no", announcementNos)
+                        .eq("visibility", "specific");
+
+                    if (specificError) {
+                        console.error("お知らせ読み込みエラー(個別配信):", specificError);
+                        renderAnnouncements([]);
+                        return;
+                    }
+
+                    specificData = specificRows || [];
+                }
+            }
+
+            // 3) 統合・重複排除・日付順で上位3件
+            const merged = [...(allData || []), ...specificData];
+            const uniqueByNo = new Map();
+            merged.forEach((item) => {
+                if (item && Number.isFinite(Number(item.no))) {
+                    uniqueByNo.set(Number(item.no), item);
+                }
+            });
+
+            const sorted = Array.from(uniqueByNo.values()).sort((a, b) => {
+                const aDate = `${String(a.notice_date || "")} ${String(a.start_time || "")}`;
+                const bDate = `${String(b.notice_date || "")} ${String(b.start_time || "")}`;
+                return aDate.localeCompare(bDate);
+            }).slice(0, 3);
+
+            renderAnnouncements(sorted);
         }
 
         portalAuth.init({
