@@ -211,7 +211,9 @@
         async function fetchMembers(client) {
             const full = await client
                 .from("member_directory")
-                .select("member_id,full_name,category,email,is_current,access_role")
+                .select("member_id,full_name,seat_number,furigana,category,email,is_current,access_role")
+                .order("seat_number", { ascending: true, nullsFirst: false })
+                .order("furigana", { ascending: true, nullsFirst: false })
                 .order("member_id", { ascending: true });
 
             if (!full.error) return { items: full.data || [], error: null };
@@ -284,7 +286,9 @@
             // 台帳側でメール未設定 or 未連携の候補を取得
             const { data: members } = await _client
                 .from("member_directory")
-                .select("member_id,full_name,category,email")
+                .select("member_id,full_name,seat_number,furigana,category,email")
+                .order("seat_number", { ascending: true, nullsFirst: false })
+                .order("furigana", { ascending: true, nullsFirst: false })
                 .order("member_id", { ascending: true });
 
             const linkedEmails = new Set(
@@ -591,7 +595,9 @@
         async function fetchMembers(client) {
             const full = await client
                 .from("member_directory")
-                .select("member_id,full_name,category,email,is_current,access_role")
+                .select("member_id,full_name,seat_number,furigana,category,email,is_current,access_role")
+                .order("seat_number", { ascending: true, nullsFirst: false })
+                .order("furigana", { ascending: true, nullsFirst: false })
                 .order("member_id", { ascending: true });
 
             if (!full.error) {

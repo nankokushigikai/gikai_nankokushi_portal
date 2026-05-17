@@ -430,9 +430,10 @@
                 // メンバーを読み込む
                 const { data: members } = await dbClient
                     .from("member_directory")
-                    .select("email, full_name")
+                    .select("email, full_name, seat_number")
                     .eq("is_current", true)
-                    .order("full_name");
+                    .order("seat_number", { ascending: true, nullsFirst: false })
+                    .order("full_name", { ascending: true });
                 
                 if (members) {
                     allMembers = members;

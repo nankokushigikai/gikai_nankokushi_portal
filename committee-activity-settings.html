@@ -362,7 +362,7 @@
         async function resolveRecipients(committeeName) {
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("member_id,full_name,email,committee,is_giun,is_editorial_committee,is_current")
+                .select("member_id,full_name,email,seat_number,furigana,committee,is_giun,is_editorial_committee,is_current")
                 .eq("is_current", true);
 
             if (error) {
@@ -379,6 +379,15 @@
                     return item.is_editorial_committee === true;
                 }
                 return normalizeCommitteeName(item.committee) === committeeName;
+            });
+
+            recipients.sort((a, b) => {
+                const leftSeat = Number.isInteger(Number(a.seat_number)) && Number(a.seat_number) > 0 ? Number(a.seat_number) : Number.MAX_SAFE_INTEGER;
+                const rightSeat = Number.isInteger(Number(b.seat_number)) && Number(b.seat_number) > 0 ? Number(b.seat_number) : Number.MAX_SAFE_INTEGER;
+                if (leftSeat !== rightSeat) return leftSeat - rightSeat;
+                const furiganaDiff = String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
+                if (furiganaDiff !== 0) return furiganaDiff;
+                return String(a.full_name || "").localeCompare(String(b.full_name || ""), "ja");
             });
 
             return recipients.map((item) => ({

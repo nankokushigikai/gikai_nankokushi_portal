@@ -347,7 +347,7 @@
 
             const giunMembers = rows
                 .filter((item) => item.is_giun)
-                .sort((a, b) => String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja"));
+                .sort(compareMembersBySeat);
             const giunChair = giunMembers.find((item) => normalizeMemberRole(item.giun_role || item.committee_role) === "委員長");
             const giunOthers = giunMembers
                 .filter((item) => !giunChair || item.member_id !== giunChair.member_id)
@@ -362,9 +362,7 @@
                 .map((committeeName) => {
                     const committeeMembers = rows
                         .filter((item) => normalizeCommitteeName(item.committee) === committeeName)
-                        .sort((a, b) => {
-                            return String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
-                        });
+                        .sort(compareMembersBySeat);
 
                     if (committeeMembers.length === 0) {
                         return null;
@@ -385,7 +383,7 @@
 
             const editorialMembers = rows
                 .filter((item) => item.is_editorial_committee)
-                .sort((a, b) => String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja"));
+                .sort(compareMembersBySeat);
             const editorialChair = editorialMembers.find((item) => normalizeMemberRole(item.editorial_role || item.committee_role) === "委員長");
             const editorialOthers = editorialMembers
                 .filter((item) => !editorialChair || item.member_id !== editorialChair.member_id)
@@ -429,6 +427,30 @@
                 return raw;
             }
             return "";
+        }
+
+        function normalizeSeatNumber(value) {
+            if (value === null || value === undefined || value === "") {
+                return null;
+            }
+            const numberValue = Number(value);
+            if (!Number.isInteger(numberValue) || numberValue <= 0) {
+                return null;
+            }
+            return numberValue;
+        }
+
+        function seatSortValue(item) {
+            const normalized = normalizeSeatNumber(item && item.seat_number);
+            return normalized === null ? Number.MAX_SAFE_INTEGER : normalized;
+        }
+
+        function compareMembersBySeat(a, b) {
+            const seatDiff = seatSortValue(a) - seatSortValue(b);
+            if (seatDiff !== 0) return seatDiff;
+            const furiganaDiff = String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
+            if (furiganaDiff !== 0) return furiganaDiff;
+            return String(a.full_name || "").localeCompare(String(b.full_name || ""), "ja");
         }
 
         function closeMemberEditModal() {
@@ -503,8 +525,9 @@
 
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("member_id,full_name,furigana,category,postal_code,address,phone,mobile,position_name,email,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role")
+                .select("member_id,full_name,furigana,seat_number,category,postal_code,address,phone,mobile,position_name,email,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role")
                 .order("category", { ascending: true })
+                .order("seat_number", { ascending: true, nullsFirst: false })
                 .order("furigana", { ascending: true, nullsFirst: false })
                 .order("full_name", { ascending: true });
 

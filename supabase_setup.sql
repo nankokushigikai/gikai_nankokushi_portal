@@ -108,6 +108,8 @@ create table if not exists public.member_directory (
     member_id text primary key,
     full_name text not null,
     furigana text,
+    seat_number int check (seat_number is null or seat_number > 0),
+    photo_path text,
     is_current boolean not null default true,
     postal_code text,
     address text,
@@ -229,6 +231,8 @@ on public.committee_activity_recipients (post_id);
 alter table public.member_directory add column if not exists is_current boolean not null default true;
 alter table public.member_directory add column if not exists access_role text not null default '使用者';
 alter table public.member_directory add column if not exists furigana text;
+alter table public.member_directory add column if not exists seat_number int;
+alter table public.member_directory add column if not exists photo_path text;
 alter table public.member_directory add column if not exists giun_role text;
 alter table public.member_directory add column if not exists editorial_role text;
 alter table public.committee_activity_posts add column if not exists created_by_user_id uuid;
@@ -250,6 +254,11 @@ set editorial_role = null
 where editorial_role is not null
   and editorial_role not in ('委員長', '委員');
 
+update public.member_directory
+set seat_number = null
+where seat_number is not null
+    and seat_number <= 0;
+
 do $$
 begin
     if not exists (
@@ -270,6 +279,16 @@ begin
         alter table public.member_directory
             add constraint member_directory_editorial_role_check
             check (editorial_role is null or editorial_role in ('委員長', '委員'));
+    end if;
+
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'member_directory_seat_number_check'
+    ) then
+        alter table public.member_directory
+            add constraint member_directory_seat_number_check
+            check (seat_number is null or seat_number > 0);
     end if;
 end $$;
 
@@ -657,6 +676,9 @@ begin
     new.full_name := btrim(new.full_name);
     new.access_role := coalesce(nullif(new.access_role, ''), '使用者');
     new.category := coalesce(nullif(new.category, ''), '議員');
+    if new.seat_number is not null and new.seat_number <= 0 then
+        new.seat_number := null;
+    end if;
     new.position_name := public.normalize_member_position(new.category, coalesce(nullif(new.position_name, ''), '未'));
     new.updated_at := now();
 

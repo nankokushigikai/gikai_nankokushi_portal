@@ -39,6 +39,21 @@ window.portalAuth = (() => {
         return (value || "").trim().toLowerCase();
     }
 
+    function getPhotoPublicUrl(photoPath) {
+        const normalizedPath = (photoPath || "").trim();
+        if (!normalizedPath || !window.AUTH_CONFIG || !window.AUTH_CONFIG.supabaseUrl) {
+            return "";
+        }
+
+        const baseUrl = String(window.AUTH_CONFIG.supabaseUrl).replace(/\/$/, "");
+        const encodedPath = normalizedPath
+            .split("/")
+            .filter(Boolean)
+            .map((segment) => encodeURIComponent(segment))
+            .join("/");
+        return `${baseUrl}/storage/v1/object/public/gian/${encodedPath}`;
+    }
+
     function isAuthPaused() {
         return !!(window.AUTH_CONFIG && window.AUTH_CONFIG.authPaused);
     }
@@ -101,6 +116,7 @@ window.portalAuth = (() => {
             role: member.access_role === "管理者" ? "admin" : "viewer",
             accessRole: member.access_role || "使用者",
             category: member.category || null,
+            photoPath: member.photo_path || "",
             isCurrent: !!member.is_current,
             googleEmail: googleInfo && googleInfo.email ? googleInfo.email : null,
             loginTime: new Date().toISOString()
@@ -142,7 +158,8 @@ window.portalAuth = (() => {
             display_name: (profile && profile.display_name) || member.full_name || email,
             role,
             category: member.category || null,
-            access_role: member.access_role || null
+            access_role: member.access_role || null,
+            photo_path: member.photo_path || ""
         };
 
         localStorage.setItem("portalSession", JSON.stringify(appSession));
@@ -165,11 +182,17 @@ window.portalAuth = (() => {
         const accessRole = (profile && profile.access_role) || (user && user.accessRole) || (role === "admin" ? "管理者" : "使用者");
         const email = (profile && profile.email) || (user && user.email) || "ユーザー";
         const name = (profile && profile.display_name) || email;
+        const photoPath = (profile && profile.photo_path) || (user && user.photoPath) || "";
+        const photoUrl = getPhotoPublicUrl(photoPath);
+        const avatarHtml = photoUrl
+            ? `<img src="${photoUrl}" alt="${name}" style="width:28px;height:28px;border-radius:999px;object-fit:cover;border:1px solid rgba(255,255,255,.35);" />`
+            : "";
         const hideDisplayName = !!(options && options.hideDisplayName);
         const displayNameHtml = hideDisplayName ? "" : `<span style="font-size:12px;color:#fff;">${name}</span>`;
 
         target.innerHTML = `
             <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">
+                ${avatarHtml}
                 <span style="font-size:12px;background:#eef2ff;color:#4338ca;padding:4px 8px;border-radius:999px;">${accessRole}</span>
                 ${displayNameHtml}
                 <button id="logoutButton" style="font-size:12px;background:#111827;color:#fff;border:0;padding:6px 10px;border-radius:8px;cursor:pointer;">ログアウト</button>
@@ -250,9 +273,10 @@ window.portalAuth = (() => {
         // is_current / access_role カラムを含む完全クエリを試みる
         const { data, error } = await supabase
             .from("member_directory")
-            .select("member_id,full_name,category,position_name,access_role,is_current,email")
+            .select("member_id,full_name,category,position_name,seat_number,access_role,is_current,email")
             .eq("is_current", true)
             .order("category", { ascending: true })
+            .order("seat_number", { ascending: true, nullsFirst: false })
             .order("member_id", { ascending: true });
 
         if (!error) {
@@ -293,7 +317,7 @@ window.portalAuth = (() => {
 
         const { data: memberFull, error: memberFullError } = await supabase
             .from("member_directory")
-            .select("member_id,full_name,email,category,access_role,is_current")
+            .select("member_id,full_name,email,category,photo_path,access_role,is_current")
             .eq("email", normalizedEmail)
             .eq("is_current", true)
             .limit(1)
@@ -306,7 +330,7 @@ window.portalAuth = (() => {
         // DB マイグレーション未実施時フォールバック
         const { data: memberBasic, error: memberBasicError } = await supabase
             .from("member_directory")
-            .select("member_id,full_name,email,category")
+            .select("member_id,full_name,email,category,photo_path")
             .eq("email", normalizedEmail)
             .limit(1)
             .maybeSingle();
