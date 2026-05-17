@@ -113,6 +113,10 @@
                     </div>
                 </div>
                 <div id="edit-specific-members-section" class="md:col-span-2 hidden">
+                    <label class="text-sm font-semibold text-gray-700 block mb-2">グループ選択（複数可）</label>
+                    <div id="edit-member-group-list" class="border border-gray-300 rounded-lg p-3 bg-gray-50 mb-3">
+                        <p class="text-sm text-gray-500">グループ読み込み中...</p>
+                    </div>
                     <label class="text-sm font-semibold text-gray-700 block mb-2">配信対象メンバー</label>
                     <div id="edit-members-list" class="border border-gray-300 rounded-lg p-3 max-h-48 overflow-y-auto bg-gray-50">
                         <p class="text-sm text-gray-500">メンバー読み込み中...</p>
@@ -143,6 +147,15 @@
         let currentOwnerName = "未設定";
         const announcementByNo = new Map();
 
+        const MEMBER_GROUPS = [
+            { id: "leaders", label: "正副議長" },
+            { id: "giun", label: "議会運営委員会" },
+            { id: "soumu", label: "総務委員会" },
+            { id: "sangyo", label: "産業建設委員会" },
+            { id: "kyoiku", label: "教育民生委員会" },
+            { id: "editorial", label: "編集委員会" }
+        ];
+
         function escapeHtml(value) {
             return String(value || "")
                 .replace(/&/g, "&amp;")
@@ -172,6 +185,65 @@
                 || "未設定";
         }
 
+        function normalizeText(value) {
+            return String(value || "").replace(/\s+/g, "").trim();
+        }
+
+        function memberBelongsToGroup(member, groupId) {
+            const positionName = String(member.position_name || "").trim();
+            const committeeName = normalizeText(member.committee);
+
+            if (groupId === "leaders") {
+                return positionName === "議長" || positionName === "副議長";
+            }
+            if (groupId === "giun") {
+                return Boolean(member.is_giun);
+            }
+            if (groupId === "soumu") {
+                return committeeName.includes("総務委員会");
+            }
+            if (groupId === "sangyo") {
+                return committeeName.includes("産業建設委員会");
+            }
+            if (groupId === "kyoiku") {
+                return committeeName.includes("教育民生委員会");
+            }
+            if (groupId === "editorial") {
+                return Boolean(member.is_editorial_committee);
+            }
+
+            return false;
+        }
+
+        function renderEditGroupList() {
+            const container = document.getElementById("edit-member-group-list");
+            container.innerHTML = MEMBER_GROUPS.map((group) => `
+                <label class="inline-flex items-center gap-2 p-2 mr-3 mb-2 hover:bg-white rounded cursor-pointer">
+                    <input type="checkbox" value="${group.id}" class="edit-member-group-checkbox w-4 h-4">
+                    <span class="text-sm">${group.label}</span>
+                </label>
+            `).join("");
+
+            container.querySelectorAll(".edit-member-group-checkbox").forEach((checkbox) => {
+                checkbox.addEventListener("change", applyEditGroupSelectionToMembers);
+            });
+        }
+
+        function applyEditGroupSelectionToMembers() {
+            const selectedGroupIds = new Set(
+                Array.from(document.querySelectorAll("#edit-member-group-list .edit-member-group-checkbox:checked")).map((checkbox) => checkbox.value)
+            );
+
+            document.querySelectorAll("#edit-members-list .member-checkbox").forEach((checkbox) => {
+                const member = allMembers.find((item) => item.email === checkbox.value);
+                if (!member) {
+                    return;
+                }
+                const shouldSelect = Array.from(selectedGroupIds).some((groupId) => memberBelongsToGroup(member, groupId));
+                checkbox.checked = shouldSelect;
+            });
+        }
+
         function closeEditModal() {
             document.getElementById("announcement-edit-modal").classList.add("hidden");
             document.getElementById("announcement-edit-message").textContent = "";
@@ -197,6 +269,9 @@
             
             if (visibility === 'specific') {
                 document.getElementById("edit-specific-members-section").classList.remove("hidden");
+                document.querySelectorAll("#edit-member-group-list .edit-member-group-checkbox").forEach((checkbox) => {
+                    checkbox.checked = false;
+                });
                 loadEditMembersList(item.no);
             } else {
                 document.getElementById("edit-specific-members-section").classList.add("hidden");
@@ -403,6 +478,9 @@
                 const section = document.getElementById("edit-specific-members-section");
                 if (radio.value === "specific" && radio.checked) {
                     section.classList.remove("hidden");
+                    document.querySelectorAll("#edit-member-group-list .edit-member-group-checkbox").forEach((checkbox) => {
+                        checkbox.checked = false;
+                    });
                     if (currentEditingAnnouncementNo) {
                         await loadEditMembersList(currentEditingAnnouncementNo);
                     }
@@ -430,7 +508,7 @@
                 // メンバーを読み込む
                 const { data: members } = await dbClient
                     .from("member_directory")
-                    .select("email, full_name, seat_number")
+                    .select("email, full_name, seat_number, position_name, committee, is_giun, is_editorial_committee")
                     .eq("is_current", true)
                     .order("seat_number", { ascending: true, nullsFirst: false })
                     .order("full_name", { ascending: true });
@@ -438,6 +516,8 @@
                 if (members) {
                     allMembers = members;
                 }
+
+                renderEditGroupList();
                 
                 await loadAnnouncements();
             }
