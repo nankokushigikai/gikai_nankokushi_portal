@@ -9,6 +9,34 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <style>
+        .activity-content-preview {
+            padding: 0;
+            min-height: 0;
+            line-height: 1.6;
+            max-height: calc(1.6em * 6);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .activity-content-preview p,
+        .activity-content-preview ol,
+        .activity-content-preview ul,
+        .activity-content-preview blockquote,
+        .activity-content-preview pre,
+        .activity-content-preview h1,
+        .activity-content-preview h2,
+        .activity-content-preview h3,
+        .activity-content-preview h4,
+        .activity-content-preview h5,
+        .activity-content-preview h6 {
+            margin: 0 0 0.3em;
+        }
+
+        .activity-content-preview > *:last-child {
+            margin-bottom: 0;
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
     <header class="bg-indigo-700 text-white shadow-lg p-4">
@@ -81,7 +109,6 @@
                 </div>
                 <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700">活動内容</label>
-                    <div id="record-content-toolbar" class="mb-2 bg-gray-100 rounded-t-lg border border-b-0 border-gray-300 p-2 flex gap-1 flex-wrap text-sm"></div>
                     <div id="record_content" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" style="min-height: 150px; font-size: 14px;"></div>
                 </div>
                 <div class="md:col-span-2 flex gap-3">
@@ -154,6 +181,11 @@
                 theme: "snow",
                 placeholder: "活動内容を入力",
                 modules: {
+                    history: {
+                        delay: 1000,
+                        maxStack: 100,
+                        userOnly: true
+                    },
                     toolbar: [
                         ["bold", "italic", "underline", "strike"],
                         ["blockquote"],
@@ -175,14 +207,67 @@
             const toolbar = document.querySelector(".ql-toolbar");
             if (toolbar) {
                 toolbar.id = "record-content-toolbar";
-                toolbar.className = "ql-toolbar mb-2 bg-gray-100 rounded-t-lg border border-b-0 border-gray-300 p-2 flex gap-1 flex-wrap text-sm";
+                toolbar.className = "ql-toolbar ql-snow mb-2 bg-gray-100 rounded-t-lg border border-b-0 border-gray-300 p-2 flex gap-1 flex-wrap text-sm";
+
+                const runHistoryAction = (action) => {
+                    const scrollX = window.scrollX;
+                    const scrollY = window.scrollY;
+                    action();
+                    requestAnimationFrame(() => {
+                        window.scrollTo(scrollX, scrollY);
+                    });
+                };
+
+                const historyGroup = document.createElement("span");
+                historyGroup.className = "ql-formats";
+
+                const undoButton = document.createElement("button");
+                undoButton.type = "button";
+                undoButton.setAttribute("aria-label", "元に戻す");
+                undoButton.title = "元に戻す (Ctrl+Z)";
+                undoButton.innerHTML = "↶";
+                undoButton.addEventListener("mousedown", (event) => {
+                    event.preventDefault();
+                });
+                undoButton.addEventListener("click", () => {
+                    runHistoryAction(() => {
+                        quillEditor.history.undo();
+                    });
+                });
+
+                const redoButton = document.createElement("button");
+                redoButton.type = "button";
+                redoButton.setAttribute("aria-label", "やり直す");
+                redoButton.title = "やり直す (Ctrl+Y)";
+                redoButton.innerHTML = "↷";
+                redoButton.addEventListener("mousedown", (event) => {
+                    event.preventDefault();
+                });
+                redoButton.addEventListener("click", () => {
+                    runHistoryAction(() => {
+                        quillEditor.history.redo();
+                    });
+                });
+
+                historyGroup.appendChild(undoButton);
+                historyGroup.appendChild(redoButton);
+                toolbar.insertBefore(historyGroup, toolbar.firstChild);
             }
 
             const editor = document.querySelector(".ql-container");
             if (editor) {
-                editor.className = "ql-container w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white";
-                editor.style.minHeight = "150px";
+                editor.className = "ql-container ql-snow w-full border border-gray-300 rounded-b-lg text-sm bg-white";
+                editor.style.height = "auto";
                 editor.style.fontSize = "14px";
+            }
+
+            const editorRoot = document.querySelector(".ql-editor");
+            if (editorRoot) {
+                editorRoot.classList.add("px-3", "py-2");
+                editorRoot.style.minHeight = "150px";
+                editorRoot.style.fontSize = "14px";
+                editorRoot.style.lineHeight = "1.6";
+                editorRoot.style.overflowY = "visible";
             }
         }
         
@@ -564,10 +649,10 @@
 
                 const contentTd = document.createElement("td");
                 contentTd.className = "p-2 border";
-                contentTd.innerHTML = item.activity_content || "";
-                contentTd.style.maxHeight = "8.4em";
-                contentTd.style.overflowY = "auto";
-                contentTd.style.overflowX = "hidden";
+                const contentPreview = document.createElement("div");
+                contentPreview.className = "activity-content-preview ql-editor";
+                contentPreview.innerHTML = item.activity_content || "";
+                contentTd.appendChild(contentPreview);
 
                 const attachmentTd = document.createElement("td");
                 attachmentTd.className = "p-2 border";
