@@ -6,6 +6,7 @@
     <title>活動記録 | 南国市議会DXポータル</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
     <header class="bg-indigo-700 text-white shadow-lg p-4">
@@ -103,7 +104,16 @@
                 <div class="border-r overflow-y-auto">
                     <ul id="attachment-preview-list" class="divide-y"></ul>
                 </div>
-                <div class="md:col-span-3 min-h-0">
+                <div class="md:col-span-3 min-h-0 flex flex-col">
+                    <div id="pdf-preview-toolbar" class="hidden items-center gap-2 px-3 py-2 border-b bg-gray-50 text-xs">
+                        <button id="pdf-prev-page" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded font-semibold">前へ</button>
+                        <span id="pdf-page-indicator" class="text-gray-700">- / -</span>
+                        <button id="pdf-next-page" type="button" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded font-semibold">次へ</button>
+                        <a id="pdf-open-new-tab" href="#" target="_blank" rel="noopener noreferrer" class="ml-auto text-sky-700 hover:text-sky-900 font-semibold">別タブで開く</a>
+                    </div>
+                    <div id="pdf-preview-canvas-wrap" class="hidden flex-1 overflow-auto bg-gray-100">
+                        <canvas id="pdf-preview-canvas" class="block mx-auto my-2 bg-white shadow"></canvas>
+                    </div>
                     <iframe id="attachment-preview-frame" title="添付資料プレビュー" class="w-full h-full"></iframe>
                 </div>
             </div>
@@ -120,6 +130,126 @@
         let currentUserName = "";
         let editingRecordId = null;
         let activityPageIndex = 0;
+        let pdfDoc = null;
+        let pdfPageNumber = 1;
+        let pdfPageCount = 0;
+        let pdfRenderInProgress = false;
+        let pdfPendingPage = null;
+        let pdfCurrentUrl = "";
+
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+        function isPdfUrl(url) {
+            const value = String(url || "").toLowerCase().split("?")[0].split("#")[0];
+            return value.endsWith(".pdf");
+        }
+
+        function setPdfToolbarState() {
+            const indicator = document.getElementById("pdf-page-indicator");
+            const prevButton = document.getElementById("pdf-prev-page");
+            const nextButton = document.getElementById("pdf-next-page");
+
+            indicator.textContent = `${pdfPageNumber} / ${pdfPageCount}`;
+            prevButton.disabled = pdfPageNumber <= 1 || pdfRenderInProgress;
+            nextButton.disabled = pdfPageNumber >= pdfPageCount || pdfRenderInProgress;
+            prevButton.className = prevButton.disabled
+                ? "bg-gray-100 text-gray-400 px-2 py-1 rounded font-semibold cursor-not-allowed"
+                : "bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded font-semibold";
+            nextButton.className = nextButton.disabled
+                ? "bg-gray-100 text-gray-400 px-2 py-1 rounded font-semibold cursor-not-allowed"
+                : "bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded font-semibold";
+        }
+
+        async function renderPdfPage(pageNumber) {
+            if (!pdfDoc) return;
+            if (pdfRenderInProgress) {
+                pdfPendingPage = pageNumber;
+                return;
+            }
+
+            pdfRenderInProgress = true;
+            setPdfToolbarState();
+
+            try {
+                const page = await pdfDoc.getPage(pageNumber);
+                const canvas = document.getElementById("pdf-preview-canvas");
+                const ctx = canvas.getContext("2d");
+                const container = document.getElementById("pdf-preview-canvas-wrap");
+                const deviceRatio = window.devicePixelRatio || 1;
+                const baseViewport = page.getViewport({ scale: 1 });
+                const targetWidth = Math.max(320, (container.clientWidth || 800) - 24);
+                const scale = targetWidth / baseViewport.width;
+                const viewport = page.getViewport({ scale });
+
+                canvas.width = Math.floor(viewport.width * deviceRatio);
+                canvas.height = Math.floor(viewport.height * deviceRatio);
+                canvas.style.width = `${Math.floor(viewport.width)}px`;
+                canvas.style.height = `${Math.floor(viewport.height)}px`;
+                ctx.setTransform(deviceRatio, 0, 0, deviceRatio, 0, 0);
+
+                await page.render({ canvasContext: ctx, viewport }).promise;
+
+                pdfPageNumber = pageNumber;
+                setPdfToolbarState();
+                container.scrollTop = 0;
+                container.scrollLeft = 0;
+            } catch (error) {
+                const indicator = document.getElementById("pdf-page-indicator");
+                indicator.textContent = "PDFの表示に失敗しました";
+            } finally {
+                pdfRenderInProgress = false;
+                if (pdfPendingPage && pdfPendingPage !== pdfPageNumber) {
+                    const nextPage = pdfPendingPage;
+                    pdfPendingPage = null;
+                    await renderPdfPage(nextPage);
+                } else {
+                    pdfPendingPage = null;
+                    setPdfToolbarState();
+                }
+            }
+        }
+
+        async function showAttachmentUrl(url) {
+            const iframe = document.getElementById("attachment-preview-frame");
+            const pdfToolbar = document.getElementById("pdf-preview-toolbar");
+            const pdfCanvasWrap = document.getElementById("pdf-preview-canvas-wrap");
+            const pdfOpenNewTab = document.getElementById("pdf-open-new-tab");
+
+            pdfOpenNewTab.href = url || "#";
+            pdfCurrentUrl = url || "";
+
+            if (isPdfUrl(url) && window.pdfjsLib) {
+                iframe.classList.add("hidden");
+                iframe.src = "about:blank";
+                pdfToolbar.classList.remove("hidden");
+                pdfToolbar.classList.add("flex");
+                pdfCanvasWrap.classList.remove("hidden");
+
+                try {
+                    const loadingTask = window.pdfjsLib.getDocument({ url, withCredentials: false });
+                    pdfDoc = await loadingTask.promise;
+                    pdfPageCount = pdfDoc.numPages || 1;
+                    pdfPageNumber = 1;
+                    await renderPdfPage(1);
+                } catch (error) {
+                    const indicator = document.getElementById("pdf-page-indicator");
+                    indicator.textContent = "PDFの表示に失敗しました";
+                }
+                return;
+            }
+
+            pdfDoc = null;
+            pdfPageNumber = 1;
+            pdfPageCount = 0;
+            pdfPendingPage = null;
+            pdfRenderInProgress = false;
+            pdfToolbar.classList.add("hidden");
+            pdfToolbar.classList.remove("flex");
+            pdfCanvasWrap.classList.add("hidden");
+            iframe.classList.remove("hidden");
+            iframe.src = url || "about:blank";
+        }
 
         function normalizeEmail(value) {
             return String(value || "").trim().toLowerCase();
@@ -169,7 +299,7 @@
                 li.className = "p-3 text-sm text-gray-500";
                 li.textContent = "添付資料はありません。";
                 list.appendChild(li);
-                frame.src = "about:blank";
+                showAttachmentUrl("about:blank");
             } else {
                 normalized.forEach((item, index) => {
                     const li = document.createElement("li");
@@ -178,12 +308,12 @@
                     button.className = "w-full text-left p-3 text-sm hover:bg-sky-50";
                     button.textContent = item.name || `添付ファイル ${index + 1}`;
                     button.addEventListener("click", () => {
-                        frame.src = item.url;
+                        showAttachmentUrl(item.url);
                     });
                     li.appendChild(button);
                     list.appendChild(li);
                 });
-                frame.src = normalized[0].url;
+                showAttachmentUrl(normalized[0].url);
             }
 
             modal.classList.remove("hidden");
@@ -193,9 +323,19 @@
         function closeAttachmentPreviewModal() {
             const modal = document.getElementById("attachment-preview-modal");
             const frame = document.getElementById("attachment-preview-frame");
+            pdfDoc = null;
+            pdfPageNumber = 1;
+            pdfPageCount = 0;
+            pdfPendingPage = null;
+            pdfRenderInProgress = false;
+            pdfCurrentUrl = "";
             frame.src = "about:blank";
             modal.classList.add("hidden");
             modal.classList.remove("flex");
+            document.getElementById("pdf-preview-toolbar").classList.add("hidden");
+            document.getElementById("pdf-preview-toolbar").classList.remove("flex");
+            document.getElementById("pdf-preview-canvas-wrap").classList.add("hidden");
+            frame.classList.remove("hidden");
         }
 
         function resetActivityFormState() {
@@ -252,7 +392,7 @@
 
             if (ownError) {
                 message.textContent = "活動記録の読込に失敗しました: " + ownError.message;
-                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="5">データを表示できませんでした。</td></tr>';
+                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="6">データを表示できませんでした。</td></tr>';
                 return;
             }
 
@@ -476,6 +616,19 @@
             await loadActivityRecords();
         });
         document.getElementById("close-attachment-preview").addEventListener("click", closeAttachmentPreviewModal);
+        document.getElementById("pdf-prev-page").addEventListener("click", async () => {
+            if (!pdfDoc || pdfPageNumber <= 1) return;
+            await renderPdfPage(pdfPageNumber - 1);
+        });
+        document.getElementById("pdf-next-page").addEventListener("click", async () => {
+            if (!pdfDoc || pdfPageNumber >= pdfPageCount) return;
+            await renderPdfPage(pdfPageNumber + 1);
+        });
+        window.addEventListener("resize", async () => {
+            if (pdfDoc && pdfCurrentUrl && isPdfUrl(pdfCurrentUrl)) {
+                await renderPdfPage(pdfPageNumber);
+            }
+        });
         document.getElementById("attachment-preview-modal").addEventListener("click", (event) => {
             if (event.target && event.target.id === "attachment-preview-modal") {
                 closeAttachmentPreviewModal();
