@@ -103,8 +103,15 @@
         </div>
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500">
-            <h1 class="text-2xl font-bold mb-2 text-gray-700">活動記録</h1>
-            <p class="text-sm text-gray-600">活動記録一覧（最新10件）を確認できます。</p>
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold mb-2 text-gray-700">活動記録</h1>
+                    <p class="text-sm text-gray-600">活動記録一覧（最新10件）を確認できます。</p>
+                </div>
+                <a href="activity-record-editor.html" class="inline-flex items-center bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-200">
+                    <i class="fas fa-plus mr-2"></i>活動記録を追加
+                </a>
+            </div>
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-sky-500">
@@ -124,7 +131,7 @@
                     </thead>
                     <tbody id="activity-list">
                         <tr>
-                            <td class="p-2 border text-gray-500" colspan="6">読み込み中です...</td>
+                            <td class="p-2 border text-gray-500" colspan="7">読み込み中です...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -137,7 +144,7 @@
             <p id="activity-message" class="mt-3 text-sm text-gray-600"></p>
         </section>
 
-        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-500">
+        <section class="hidden bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-500">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <h2 class="text-xl font-bold text-gray-700">活動の記録</h2>
                 <button id="open-activity-form" type="button" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">活動の記録</button>
@@ -756,7 +763,9 @@
                     editButton.type = "button";
                     editButton.className = "bg-sky-500 hover:bg-sky-600 text-white px-3 py-1 rounded text-xs font-semibold";
                     editButton.textContent = "修正";
-                    editButton.addEventListener("click", () => openEditForm(item));
+                    editButton.addEventListener("click", () => {
+                        window.location.href = `activity-record-editor.html?id=${encodeURIComponent(item.id)}`;
+                    });
                     actionTd.appendChild(editButton);
                 } else {
                     const createButton = document.createElement("button");
@@ -824,9 +833,7 @@
         }
 
         document.getElementById("open-activity-form").addEventListener("click", () => {
-            initQuillEditor();
-            document.getElementById("activity-form").classList.remove("hidden");
-            document.getElementById("record-message").textContent = "";
+            window.location.href = "activity-record-editor.html";
         });
 
         document.getElementById("cancel-activity-form").addEventListener("click", () => {

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>活動記録編集 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">活動記録編集</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-4">
+            <a href="activity-records.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>活動記録一覧に戻る
+            </a>
+        </div>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h1 id="editor-title" class="text-2xl font-bold mb-2 text-gray-700">活動記録を追加</h1>
+                    <p class="text-sm text-gray-600">活動日、状況区分、タイトル、活動内容を別画面で入力します。</p>
+                </div>
+                <div class="flex gap-2">
+                    <a href="activity-records.html" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">一覧へ戻る</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-6 bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-500">
+            <form id="activity-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">活動日</label>
+                    <input id="record_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">状況区分</label>
+                    <select id="record_status" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="">未設定</option>
+                        <option value="記録済">記録済</option>
+                        <option value="未実施">未実施</option>
+                        <option value="継続中">継続中</option>
+                        <option value="保留中">保留中</option>
+                        <option value="完了">完了</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">活動タイトル</label>
+                    <input id="record_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 総務委員会の現地確認">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">活動内容</label>
+                    <div id="record_content" class="mt-1 w-full border border-gray-300 rounded-lg text-sm bg-white" style="min-height: 220px; font-size: 14px;"></div>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap gap-3">
+                    <button id="save-record-button" type="submit" class="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-lg text-sm font-semibold">保存</button>
+                    <a href="activity-records.html" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">戻る</a>
+                </div>
+            </form>
+            <p id="record-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        let dbClient = null;
+        let quillEditor = null;
+        let editingRecordId = null;
+        let currentUserEmail = "";
+        let currentUserName = "";
+
+        function normalizeEmail(value) {
+            return String(value || "").trim().toLowerCase();
+        }
+
+        function initQuillEditor() {
+            if (quillEditor) return;
+
+            const container = document.getElementById("record_content");
+            if (!container) return;
+
+            quillEditor = new Quill(container, {
+                theme: "snow",
+                placeholder: "活動内容を入力",
+                modules: {
+                    history: {
+                        delay: 1000,
+                        maxStack: 100,
+                        userOnly: true
+                    },
+                    toolbar: [
+                        ["bold", "italic", "underline", "strike"],
+                        ["blockquote"],
+                        [{ "header": 1 }, { "header": 2 }],
+                        [{ "list": "ordered" }, { "list": "bullet" }],
+                        [{ "script": "sub" }, { "script": "super" }],
+                        [{ "indent": "-1" }, { "indent": "+1" }],
+                        [{ "size": ["small", false, "large", "huge"] }],
+                        [{ "header": [1, 2, 3, 4, 5, 6, false] }],
+                        [{ "color": [] }, { "background": [] }],
+                        [{ "align": [] }],
+                        ["clean"]
+                    ]
+                }
+            });
+
+            const toolbar = document.querySelector(".ql-toolbar");
+            if (toolbar) {
+                toolbar.className = "ql-toolbar ql-snow mb-2 bg-gray-100 rounded-t-lg border border-b-0 border-gray-300 p-2 flex gap-1 flex-wrap text-sm";
+
+                const runHistoryAction = (action) => {
+                    const scrollX = window.scrollX;
+                    const scrollY = window.scrollY;
+                    action();
+                    requestAnimationFrame(() => {
+                        window.scrollTo(scrollX, scrollY);
+                    });
+                };
+
+                const historyGroup = document.createElement("span");
+                historyGroup.className = "ql-formats";
+
+                const undoButton = document.createElement("button");
+                undoButton.type = "button";
+                undoButton.setAttribute("aria-label", "元に戻す");
+                undoButton.title = "元に戻す (Ctrl+Z)";
+                undoButton.innerHTML = "↶";
+                undoButton.addEventListener("mousedown", (event) => event.preventDefault());
+                undoButton.addEventListener("click", () => runHistoryAction(() => quillEditor.history.undo()));
+
+                const redoButton = document.createElement("button");
+                redoButton.type = "button";
+                redoButton.setAttribute("aria-label", "やり直す");
+                redoButton.title = "やり直す (Ctrl+Y)";
+                redoButton.innerHTML = "↷";
+                redoButton.addEventListener("mousedown", (event) => event.preventDefault());
+                redoButton.addEventListener("click", () => runHistoryAction(() => quillEditor.history.redo()));
+
+                historyGroup.appendChild(undoButton);
+                historyGroup.appendChild(redoButton);
+                toolbar.insertBefore(historyGroup, toolbar.firstChild);
+            }
+
+            const editor = document.querySelector(".ql-container");
+            if (editor) {
+                editor.className = "ql-container ql-snow w-full border border-gray-300 rounded-b-lg text-sm bg-white";
+                editor.style.height = "auto";
+                editor.style.fontSize = "14px";
+            }
+
+            const editorRoot = document.querySelector(".ql-editor");
+            if (editorRoot) {
+                editorRoot.classList.add("px-3", "py-3");
+                editorRoot.style.minHeight = "220px";
+                editorRoot.style.fontSize = "14px";
+                editorRoot.style.lineHeight = "1.6";
+                editorRoot.style.overflowY = "visible";
+            }
+        }
+
+        async function loadRecordIfNeeded() {
+            const params = new URLSearchParams(window.location.search);
+            const recordId = params.get("id");
+            if (!recordId) return;
+
+            editingRecordId = recordId;
+            document.getElementById("editor-title").textContent = "活動記録を編集";
+            document.getElementById("save-record-button").textContent = "更新";
+
+            const { data, error } = await dbClient
+                .from("activity_records")
+                .select("id,activity_date,activity_title,activity_status,activity_content")
+                .eq("id", recordId)
+                .maybeSingle();
+
+            const message = document.getElementById("record-message");
+            if (error) {
+                message.textContent = "活動記録の読込に失敗しました: " + error.message;
+                return;
+            }
+
+            if (!data) {
+                message.textContent = "対象の活動記録が見つかりません。";
+                return;
+            }
+
+            document.getElementById("record_date").value = data.activity_date || "";
+            document.getElementById("record_title").value = data.activity_title || "";
+            document.getElementById("record_status").value = data.activity_status || "";
+            if (quillEditor) {
+                quillEditor.root.innerHTML = data.activity_content || "";
+            }
+        }
+
+        async function saveActivityRecord(event) {
+            event.preventDefault();
+
+            const message = document.getElementById("record-message");
+            const activityContent = quillEditor ? quillEditor.root.innerHTML.trim() : "";
+            const payload = {
+                user_email: currentUserEmail,
+                user_name: currentUserName || "未設定",
+                activity_date: document.getElementById("record_date").value,
+                activity_title: document.getElementById("record_title").value.trim(),
+                activity_status: document.getElementById("record_status").value || null,
+                activity_content: activityContent
+            };
+
+            if (!payload.activity_date || !payload.activity_title || !payload.activity_content) {
+                message.textContent = "活動日、活動タイトル、活動内容を入力してください。";
+                return;
+            }
+
+            let error = null;
+            if (editingRecordId) {
+                const result = await dbClient
+                    .from("activity_records")
+                    .update(payload)
+                    .eq("id", editingRecordId);
+                error = result.error;
+            } else {
+                const result = await dbClient
+                    .from("activity_records")
+                    .insert(payload)
+                    .select("id")
+                    .single();
+                error = result.error;
+                if (!error && result.data && result.data.id) {
+                    editingRecordId = result.data.id;
+                    history.replaceState(null, "", `activity-record-editor.html?id=${encodeURIComponent(result.data.id)}`);
+                    document.getElementById("editor-title").textContent = "活動記録を編集";
+                    document.getElementById("save-record-button").textContent = "更新";
+                }
+            }
+
+            if (error) {
+                message.textContent = "保存に失敗しました: " + error.message;
+                return;
+            }
+
+            message.innerHTML = '保存しました。<a href="activity-records.html" class="text-indigo-700 hover:text-indigo-900 font-semibold">一覧へ戻る</a>';
+        }
+
+        document.getElementById("activity-form").addEventListener("submit", saveActivityRecord);
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            hideDisplayName: true,
+            returnTo: "activity-record-editor.html",
+            onReady: async ({ client, session, profile }) => {
+                dbClient = client;
+                const sessionUser = session && session.user ? session.user : null;
+                currentUserEmail = normalizeEmail((sessionUser && sessionUser.email) || (session && session.email) || (profile && profile.email) || "");
+                currentUserName = (session && session.displayName) || (profile && profile.display_name) || currentUserEmail || "未設定";
+
+                initQuillEditor();
+                await loadRecordIfNeeded();
+            }
+        });
+    </script>
+</body>
+</html>
