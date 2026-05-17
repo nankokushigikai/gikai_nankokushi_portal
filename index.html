@@ -146,6 +146,10 @@
             return `${parts[0]}/${parts[1]}/${parts[2]}`;
         }
 
+        function normalizeEmail(value) {
+            return String(value || "").trim().toLowerCase();
+        }
+
         function buildAnnouncementLine(item) {
             const dateText = formatAnnouncementDate(item.notice_date);
             const start = item.start_time ? String(item.start_time).slice(0, 5) : "--:--";
@@ -207,90 +211,21 @@
             }
 
             const baseSelect = "no,notice_date,start_time,end_time,title,content,visibility";
-
-            // 管理者は配信対象に関係なく全件を確認できるようにする。
-            if (userRole === "admin") {
-                const { data: adminData, error: adminError } = await client
-                    .from("announcements")
-                    .select(baseSelect)
-                    .order("notice_date", { ascending: true })
-                    .order("start_time", { ascending: true })
-                    .order("no", { ascending: true })
-                    .limit(3);
-
-                if (adminError) {
-                    console.error("お知らせ読み込みエラー(管理者):", adminError);
-                    renderAnnouncements([]);
-                    return;
-                }
-
-                renderAnnouncements(adminData || []);
-                return;
-            }
-
-            // 1) 全員配信を取得
-            const { data: allData, error: allError } = await client
+            const { data, error } = await client
                 .from("announcements")
                 .select(baseSelect)
-                .eq("visibility", "all");
+                .order("notice_date", { ascending: false })
+                .order("start_time", { ascending: false })
+                .order("no", { ascending: false })
+                .limit(3);
 
-            if (allError) {
-                console.error("お知らせ読み込みエラー(全員配信):", allError);
+            if (error) {
+                console.error("お知らせ読み込みエラー:", error);
                 renderAnnouncements([]);
                 return;
             }
 
-            let specificData = [];
-            if (userEmail) {
-                // 2) 自分向け配信の announcement_no を取得
-                const { data: recipientRows, error: recipientError } = await client
-                    .from("announcement_recipients")
-                    .select("announcement_no")
-                    .eq("recipient_email", userEmail);
-
-                if (recipientError) {
-                    console.error("お知らせ読み込みエラー(配信対象):", recipientError);
-                    renderAnnouncements([]);
-                    return;
-                }
-
-                const announcementNos = Array.from(
-                    new Set((recipientRows || []).map((row) => Number(row.announcement_no)).filter((no) => Number.isFinite(no)))
-                );
-
-                if (announcementNos.length > 0) {
-                    const { data: specificRows, error: specificError } = await client
-                        .from("announcements")
-                        .select(baseSelect)
-                        .in("no", announcementNos)
-                        .eq("visibility", "specific");
-
-                    if (specificError) {
-                        console.error("お知らせ読み込みエラー(個別配信):", specificError);
-                        renderAnnouncements([]);
-                        return;
-                    }
-
-                    specificData = specificRows || [];
-                }
-            }
-
-            // 3) 統合・重複排除・日付順で上位3件
-            const merged = [...(allData || []), ...specificData];
-            const uniqueByNo = new Map();
-            merged.forEach((item) => {
-                if (item && Number.isFinite(Number(item.no))) {
-                    uniqueByNo.set(Number(item.no), item);
-                }
-            });
-
-            const sorted = Array.from(uniqueByNo.values()).sort((a, b) => {
-                const aDate = `${String(a.notice_date || "")} ${String(a.start_time || "")}`;
-                const bDate = `${String(b.notice_date || "")} ${String(b.start_time || "")}`;
-                return aDate.localeCompare(bDate);
-            }).slice(0, 3);
-
-            renderAnnouncements(sorted);
+            renderAnnouncements(data || []);
         }
 
         portalAuth.init({

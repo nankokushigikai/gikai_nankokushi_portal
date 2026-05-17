@@ -426,11 +426,20 @@ for delete using (public.is_portal_admin());
 -- 管理者判定は public.is_portal_admin() を利用
 
 drop policy if exists announcements_select_authenticated on public.announcements;
-create policy announcements_select_authenticated on public.announcements
+drop policy if exists announcements_select_all on public.announcements;
+drop policy if exists announcements_select_specific_recipient_or_admin on public.announcements;
+
+create policy announcements_select_all on public.announcements
 for select using (
-    auth.uid() is not null
+    visibility = 'all'
+);
+
+create policy announcements_select_specific_recipient_or_admin on public.announcements
+for select using (
+    visibility = 'specific'
+    and auth.uid() is not null
     and (
-        visibility = 'all'
+        public.is_portal_admin()
         or exists (
             select 1
             from public.announcement_recipients ar

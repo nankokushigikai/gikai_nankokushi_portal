@@ -181,6 +181,10 @@
                 return "配信対象テーブル(public.announcement_recipients)が未反映です。Supabase SQL Editor で supabase_setup.sql を実行後、NOTIFY pgrst, 'reload schema'; を実行してください。";
             }
 
+            function normalizeEmail(value) {
+                return String(value || "").trim().toLowerCase();
+            }
+
         function formatDate(dateValue) {
             if (!dateValue) return "";
             const parts = String(dateValue).split("-");
@@ -439,16 +443,10 @@
             message.textContent = "";
             announcementByNo.clear();
 
-            let query = dbClient
+            const baseSelect = "notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility";
+            const { data, error } = await dbClient
                 .from("announcements")
-                .select("notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility");
-
-            // 管理者ではない場合、自分に配信されているお知らせのみを取得
-            if (currentRole !== "admin") {
-                query = query.or(`visibility.eq.all,announcement_recipients(recipient_email).eq.${currentUserEmail}`);
-            }
-
-            const { data, error } = await query
+                .select(baseSelect)
                 .order("notice_date", { ascending: false })
                 .order("start_time", { ascending: false })
                 .order("no", { ascending: false });
@@ -460,8 +458,10 @@
             }
 
             const rows = data || [];
+
             if (rows.length === 0) {
                 tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="6">お知らせはありません。</td></tr>';
+                message.textContent = `表示対象が0件です（role: ${currentRole}, email: ${currentUserEmail || "未取得"}）。`;
                 return;
             }
 
