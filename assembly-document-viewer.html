@@ -551,6 +551,21 @@
             return sess && sess.memberId ? sess.memberId : null;
         }
 
+        function getNoteOwnerCandidates() {
+            const sess = window.portalAuth && typeof window.portalAuth.getSession === "function"
+                ? window.portalAuth.getSession()
+                : null;
+            if (!sess) {
+                return [];
+            }
+
+            const raw = [sess.memberId, sess.authUserId]
+                .map((v) => String(v || "").trim())
+                .filter(Boolean);
+
+            return Array.from(new Set(raw));
+        }
+
         function setMemoStatus(message) {
             document.getElementById("memo-status").textContent = message;
         }
@@ -1552,8 +1567,8 @@
             resetInkData();
             setInkStatus("手書き読込中...");
 
-            const memberId = getNoteMemberId();
-            if (!memberId) {
+            const ownerCandidates = getNoteOwnerCandidates();
+            if (ownerCandidates.length === 0) {
                 setInkStatus("(ログイン情報なし)");
                 return;
             }
@@ -1568,24 +1583,26 @@
                 const { data, error } = await supabase
                     .from("document_ink_notes")
                     .select("ink_payload, updated_at")
-                    .eq("member_id", memberId)
+                    .in("member_id", ownerCandidates)
                     .eq("session_id", currentSessionId)
                     .eq("document_name", currentFileName)
-                    .maybeSingle();
+                    .order("updated_at", { ascending: false })
+                    .limit(1);
 
                 if (error) {
                     throw error;
                 }
 
-                inkPages = data ? parseInkPayload(data.ink_payload) : {};
+                const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
+                inkPages = row ? parseInkPayload(row.ink_payload) : {};
                 loadCurrentPageInkFromStore();
                 inkModeEnabled = false;
                 inkVisible = true;
                 updateInkCanvasVisibility();
                 requestAnimationFrame(() => requestAnimationFrame(() => redrawInkCanvas()));
 
-                if (data && data.updated_at) {
-                    const dt = new Date(data.updated_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                if (row && row.updated_at) {
+                    const dt = new Date(row.updated_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
                     setInkStatus(`最終保存: ${dt}`);
                 } else {
                     setInkStatus("未保存");
@@ -2055,14 +2072,17 @@
         async function saveInkNote(options = {}) {
             const quiet = !!options.quiet;
             const allowEmpty = !!options.allowEmpty;
-            const memberId = getNoteMemberId();
-            if (!memberId || !currentSessionId || !currentFileName) {
+            const ownerCandidates = getNoteOwnerCandidates();
+            if (ownerCandidates.length === 0 || !currentSessionId || !currentFileName) {
                 const errMsg = "保存対象の情報が不足しています";
                 // 重要なエラーは quiet を無視して表示
                 setInkStatus(errMsg);
-                console.warn("手書きメモ保存エラー:", { memberId, currentSessionId, currentFileName });
+                console.warn("手書きメモ保存エラー:", { ownerCandidates, currentSessionId, currentFileName });
                 return false;
             }
+
+            const primaryOwner = ownerCandidates[0];
+            const fallbackOwner = ownerCandidates.length > 1 ? ownerCandidates[1] : null;
 
             const inkPayload = buildInkPayloadForSave();
             const pageKeys = Object.keys(inkPayload.pages || {});
@@ -2076,12 +2096,22 @@
 
                 try {
                     const supabase = getNoteClient();
-                    const { error } = await supabase
+                    let { error } = await supabase
                         .from("document_ink_notes")
                         .delete()
-                        .eq("member_id", memberId)
+                        .eq("member_id", primaryOwner)
                         .eq("session_id", currentSessionId)
                         .eq("document_name", currentFileName);
+
+                    if (error && fallbackOwner) {
+                        const fallback = await supabase
+                            .from("document_ink_notes")
+                            .delete()
+                            .eq("member_id", fallbackOwner)
+                            .eq("session_id", currentSessionId)
+                            .eq("document_name", currentFileName);
+                        error = fallback.error;
+                    }
 
                     if (error) {
                         throw error;
@@ -2107,15 +2137,28 @@
             try {
                 const supabase = getNoteClient();
                 const now = new Date().toISOString();
-                const { error } = await supabase
+                let { error } = await supabase
                     .from("document_ink_notes")
                     .upsert({
-                        member_id: memberId,
+                        member_id: primaryOwner,
                         session_id: currentSessionId,
                         document_name: currentFileName,
                         ink_payload: inkPayload,
                         updated_at: now
                     }, { onConflict: "member_id,session_id,document_name" });
+
+                if (error && fallbackOwner) {
+                    const fallback = await supabase
+                        .from("document_ink_notes")
+                        .upsert({
+                            member_id: fallbackOwner,
+                            session_id: currentSessionId,
+                            document_name: currentFileName,
+                            ink_payload: inkPayload,
+                            updated_at: now
+                        }, { onConflict: "member_id,session_id,document_name" });
+                    error = fallback.error;
+                }
 
                 if (error) {
                     throw error;
@@ -2135,12 +2178,12 @@
         }
 
         async function clearInkNote() {
-            const memberId = getNoteMemberId();
+            const ownerCandidates = getNoteOwnerCandidates();
 
             resetInkData();
             setInkStatus("手書き削除中...");
 
-            if (!memberId || !currentSessionId || !currentFileName) {
+            if (ownerCandidates.length === 0 || !currentSessionId || !currentFileName) {
                 setInkStatus("未保存");
                 return;
             }
@@ -2150,7 +2193,7 @@
                 const { error } = await supabase
                     .from("document_ink_notes")
                     .delete()
-                    .eq("member_id", memberId)
+                    .in("member_id", ownerCandidates)
                     .eq("session_id", currentSessionId)
                     .eq("document_name", currentFileName);
 
