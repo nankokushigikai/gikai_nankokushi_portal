@@ -292,6 +292,35 @@
             return localStorage.getItem("portal_google_provider_token") || null;
         }
 
+        function buildFriendlyGoogleError(detailText) {
+            const raw = String(detailText || "").trim();
+            let parsed = null;
+            try {
+                parsed = JSON.parse(raw);
+            } catch (_error) {
+                parsed = null;
+            }
+
+            const err = parsed && parsed.error ? parsed.error : null;
+            const reason = (err && err.errors && err.errors[0] && err.errors[0].reason) || "";
+            const status = (err && err.status) || "";
+            const message = (err && err.message) || raw;
+
+            if (status === "PERMISSION_DENIED" || reason === "accessNotConfigured") {
+                return "Google Calendar API が未有効です。管理者が Google Cloud で1回有効化すれば、一般ユーザーの追加設定は不要です。反映まで数分待って再実行してください。";
+            }
+
+            if (reason === "insufficientPermissions" || reason === "forbidden" || /insufficient.*scope/i.test(message)) {
+                return "Google権限が不足しています。ログアウト後に再ログインして、Googleの権限同意を許可してください。";
+            }
+
+            if (reason === "authError" || /invalid credentials|unauthenticated/i.test(message)) {
+                return "認証トークンが無効です。ログアウト後に再ログインして再実行してください。";
+            }
+
+            return message || "Google Calendar APIエラー";
+        }
+
         async function createGoogleCalendarInvite(client, payload, recipientEmails) {
             const providerToken = await getGoogleProviderToken(client);
             if (!providerToken) {
@@ -335,7 +364,7 @@
 
             if (!response.ok) {
                 const detail = await response.text();
-                return { ok: false, reason: detail || "Google Calendar APIエラー" };
+                return { ok: false, reason: buildFriendlyGoogleError(detail) };
             }
 
             const eventData = await response.json();
