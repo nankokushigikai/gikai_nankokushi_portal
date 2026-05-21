@@ -870,10 +870,11 @@
         }
 
         function getNoteMemberId() {
-            if (_noteMemberId) return _noteMemberId;
-            const sess = window.portalAuth.getSession();
-            _noteMemberId = sess && sess.memberId ? sess.memberId : null;
-            return _noteMemberId;
+            // キャッシュは使用しない。毎回セッション情報を取得する
+            const sess = window.portalAuth && typeof window.portalAuth.getSession === "function"
+                ? window.portalAuth.getSession()
+                : null;
+            return sess && sess.memberId ? sess.memberId : null;
         }
 
         async function loadNote(sessionId, documentInfo) {
@@ -986,6 +987,46 @@
         document.getElementById("memo-clear-btn").addEventListener("click", clearMemoText);
         setupInkCanvasEvents();
         // ---- メモ機能ここまで ----
+
+        // ---- ページ離脱時の自動保存 ----
+        async function autoSaveInkOnPageUnload() {
+            const memberId = getNoteMemberId();
+            if (!memberId || !currentNoteDocName || !currentNoteSessionId) {
+                console.warn("自動保存対象の情報が不足:", { memberId, currentNoteDocName, currentNoteSessionId });
+                return;
+            }
+
+            const validStrokes = inkStrokes.filter((stroke) => Array.isArray(stroke.points) && stroke.points.length >= 2);
+            if (validStrokes.length === 0) {
+                return;
+            }
+
+            try {
+                const supabase = getNoteClient();
+                const now = new Date().toISOString();
+                const { error } = await supabase
+                    .from("document_ink_notes")
+                    .upsert({
+                        member_id: memberId,
+                        session_id: currentNoteSessionId,
+                        document_name: currentNoteDocName,
+                        ink_payload: validStrokes,
+                        updated_at: now
+                    }, { onConflict: "member_id,session_id,document_name" });
+
+                if (error) {
+                    throw error;
+                }
+
+                console.log("ページ離脱時の手書き自動保存成功:", { strokes: validStrokes.length, document: currentNoteDocName });
+            } catch (error) {
+                console.error("ページ離脱時の手書き自動保存エラー:", error);
+            }
+        }
+
+        window.addEventListener("beforeunload", () => {
+            autoSaveInkOnPageUnload();
+        });
 
         portalAuth.init({
             requireAuth: true,

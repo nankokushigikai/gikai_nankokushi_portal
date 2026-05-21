@@ -512,14 +512,12 @@
         }
 
         function getNoteMemberId() {
-            if (_noteMemberId) {
-                return _noteMemberId;
-            }
+            // キャッシュは使用しない。毎回セッション情報を取得する
+            // （portalAuth.init() 後はセッション情報が安定しているため）
             const sess = window.portalAuth && typeof window.portalAuth.getSession === "function"
                 ? window.portalAuth.getSession()
                 : null;
-            _noteMemberId = sess && sess.memberId ? sess.memberId : null;
-            return _noteMemberId;
+            return sess && sess.memberId ? sess.memberId : null;
         }
 
         function setMemoStatus(message) {
@@ -2024,9 +2022,10 @@
             const allowEmpty = !!options.allowEmpty;
             const memberId = getNoteMemberId();
             if (!memberId || !currentSessionId || !currentFileName) {
-                if (!quiet) {
-                    setInkStatus("保存対象の情報が不足しています");
-                }
+                const errMsg = "保存対象の情報が不足しています";
+                // 重要なエラーは quiet を無視して表示
+                setInkStatus(errMsg);
+                console.warn("手書きメモ保存エラー:", { memberId, currentSessionId, currentFileName });
                 return false;
             }
 
@@ -2094,9 +2093,8 @@
                 return true;
             } catch (error) {
                 console.warn("手書きメモ保存エラー:", error);
-                if (!quiet) {
-                    setInkStatus("手書き保存エラー");
-                }
+                // 重要なエラーは quiet を無視して表示
+                setInkStatus(`保存エラー: ${error.message || "不明なエラー"}`);
                 return false;
             }
         }
@@ -2220,9 +2218,13 @@
             setInkStatus("終了前に手書きを自動保存中...");
 
             try {
-                await saveInkNote({ quiet: true, allowEmpty: true });
+                await saveInkNote({ quiet: false, allowEmpty: true });
+                // 保存成功メッセージを少し表示した後に終了
+                await new Promise(resolve => setTimeout(resolve, 800));
             } catch (error) {
                 console.warn("終了時の手書き自動保存に失敗:", error);
+                setInkStatus("保存エラーが発生しました。詳細はコンソールを確認してください。");
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
 
             const returnTo = getReturnTo();
