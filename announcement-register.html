@@ -94,6 +94,13 @@
                     <label class="text-sm font-semibold text-gray-700">回答期限（出欠確認ありの場合）</label>
                     <input id="attendance_deadline" type="datetime-local" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" disabled>
                 </div>
+                <div class="md:col-span-2">
+                    <label class="flex items-center gap-2">
+                        <input id="google_calendar_invite" type="checkbox" class="w-4 h-4">
+                        <span class="text-sm font-semibold text-gray-700">Googleカレンダーで配信対象を参加者招待する</span>
+                    </label>
+                    <p class="text-xs text-gray-500 mt-1">有効にすると、登録者のGoogleカレンダーで予定を作成し、配信対象へ招待を送信します。</p>
+                </div>
                 <div id="specific-members-section" class="md:col-span-2 hidden">
                     <label class="text-sm font-semibold text-gray-700 block mb-2">グループ選択（複数可）</label>
                     <div id="member-group-list" class="border border-gray-300 rounded-lg p-3 bg-gray-50 mb-3">
@@ -168,6 +175,7 @@
             document.getElementById("attendance_required").checked = false;
             document.getElementById("attendance_deadline").value = "";
             document.getElementById("attendance_deadline").disabled = true;
+            document.getElementById("google_calendar_invite").checked = false;
             document.getElementById("specific-members-section").classList.add("hidden");
             document.querySelectorAll("#member-group-list .member-group-checkbox").forEach((checkbox) => {
                 checkbox.checked = false;
@@ -244,6 +252,92 @@
             });
         }
 
+        function buildCalendarDateTime(dateValue, timeValue) {
+            const time = String(timeValue || "00:00").slice(0, 5);
+            return `${dateValue}T${time}:00+09:00`;
+        }
+
+        function getRecipientEmails(visibility, selectedMembers) {
+            if (visibility === "specific") {
+                return Array.from(new Set(selectedMembers.map((email) => normalizeEmail(email)).filter(Boolean)));
+            }
+
+            return Array.from(
+                new Set(
+                    allMembers
+                        .map((member) => normalizeEmail(member.email))
+                        .filter(Boolean)
+                )
+            );
+        }
+
+        function normalizeEmail(value) {
+            return String(value || "").trim().toLowerCase();
+        }
+
+        async function getGoogleProviderToken(client) {
+            const { data, error } = await client.auth.getSession();
+            if (error || !data || !data.session) {
+                return null;
+            }
+
+            return data.session.provider_token || null;
+        }
+
+        async function createGoogleCalendarInvite(client, payload, recipientEmails) {
+            const providerToken = await getGoogleProviderToken(client);
+            if (!providerToken) {
+                return { ok: false, reason: "Google再ログイン後に実行してください（Calendar権限が不足している可能性があります）。" };
+            }
+
+            if (!payload.notice_date || !payload.start_time || !payload.end_time) {
+                return { ok: false, reason: "日付または時刻が不足しています。" };
+            }
+
+            const descriptionLines = [
+                payload.content || "",
+                payload.contact_phone ? `連絡先電話: ${payload.contact_phone}` : "",
+                payload.contact_email ? `連絡先メール: ${payload.contact_email}` : "",
+                payload.remarks ? `備考: ${payload.remarks}` : "",
+                payload.attendance_required ? "出欠確認あり" : ""
+            ].filter(Boolean);
+
+            const eventPayload = {
+                summary: payload.title,
+                description: descriptionLines.join("\n"),
+                start: {
+                    dateTime: buildCalendarDateTime(payload.notice_date, payload.start_time),
+                    timeZone: "Asia/Tokyo"
+                },
+                end: {
+                    dateTime: buildCalendarDateTime(payload.notice_date, payload.end_time),
+                    timeZone: "Asia/Tokyo"
+                },
+                attendees: recipientEmails.map((email) => ({ email }))
+            };
+
+            const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${providerToken}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(eventPayload)
+            });
+
+            if (!response.ok) {
+                const detail = await response.text();
+                return { ok: false, reason: detail || "Google Calendar APIエラー" };
+            }
+
+            const eventData = await response.json();
+            return {
+                ok: true,
+                eventId: eventData.id || null,
+                htmlLink: eventData.htmlLink || null
+            };
+        }
+
         function renderGroupList() {
             const container = document.getElementById("member-group-list");
             container.innerHTML = MEMBER_GROUPS.map((group) => `
@@ -303,6 +397,7 @@
                 visibility: visibility,
                 updated_at: new Date().toISOString()
             };
+            const useGoogleInvite = document.getElementById("google_calendar_invite").checked;
 
             if (!payload.notice_date || !payload.start_time || !payload.end_time || !payload.title || !payload.content) {
                 document.getElementById("announcement-message").textContent = "必須項目を入力してください。";
@@ -356,6 +451,43 @@
                             : "配信対象の保存に失敗しました: " + recipientError.message;
                     return;
                 }
+            }
+
+            if (useGoogleInvite) {
+                const recipientEmails = getRecipientEmails(visibility, selectedMembers);
+                if (recipientEmails.length === 0) {
+                    document.getElementById("announcement-message").textContent = "登録しました（Google招待対象メールが0件のため、カレンダー招待は送信していません）。";
+                    clearForm();
+                    return;
+                }
+
+                const inviteResult = await createGoogleCalendarInvite(dbClient, payload, recipientEmails);
+                if (!inviteResult.ok) {
+                    document.getElementById("announcement-message").textContent = `登録しました（Google招待に失敗: ${inviteResult.reason}）`;
+                    clearForm();
+                    return;
+                }
+
+                if (announcementNo && inviteResult.eventId) {
+                    const { error: calendarUpdateError } = await dbClient
+                        .from("announcements")
+                        .update({
+                            google_calendar_event_id: inviteResult.eventId,
+                            google_calendar_event_link: inviteResult.htmlLink || null,
+                            google_calendar_synced_at: new Date().toISOString()
+                        })
+                        .eq("no", announcementNo);
+
+                    if (calendarUpdateError) {
+                        document.getElementById("announcement-message").textContent = `登録とGoogle招待は完了しましたが、連携情報の保存に失敗しました: ${calendarUpdateError.message}`;
+                        clearForm();
+                        return;
+                    }
+                }
+
+                document.getElementById("announcement-message").textContent = `登録しました。Google招待も送信しました（${recipientEmails.length}名）。`;
+                clearForm();
+                return;
             }
 
             document.getElementById("announcement-message").textContent = "登録しました。";

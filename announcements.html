@@ -142,6 +142,12 @@
                     <input id="edit_attendance_deadline" type="datetime-local" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" disabled>
                 </div>
                 <div class="md:col-span-2">
+                    <label class="flex items-center gap-2">
+                        <input id="edit_google_calendar_invite" type="checkbox" class="w-4 h-4">
+                        <span class="text-sm font-semibold text-gray-700">保存時にGoogleカレンダー参加者招待を更新する</span>
+                    </label>
+                </div>
+                <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700">配信対象</label>
                     <div class="mt-2 space-y-2">
                         <label class="flex items-center gap-2">
@@ -275,6 +281,89 @@
             if (status === "absent") return "bg-rose-100 text-rose-700";
             if (status === "pending") return "bg-amber-100 text-amber-700";
             return "bg-gray-100 text-gray-600";
+        }
+
+        function buildCalendarDateTime(dateValue, timeValue) {
+            const time = String(timeValue || "00:00").slice(0, 5);
+            return `${dateValue}T${time}:00+09:00`;
+        }
+
+        async function getGoogleProviderToken(client) {
+            const { data, error } = await client.auth.getSession();
+            if (error || !data || !data.session) {
+                return null;
+            }
+
+            return data.session.provider_token || null;
+        }
+
+        function getRecipientEmailsByVisibility(visibility, selectedMembers) {
+            if (visibility === "specific") {
+                return Array.from(new Set(selectedMembers.map((email) => normalizeEmail(email)).filter(Boolean)));
+            }
+
+            return Array.from(
+                new Set(
+                    allMembers
+                        .map((member) => normalizeEmail(member.email))
+                        .filter(Boolean)
+                )
+            );
+        }
+
+        async function syncGoogleCalendarInvite(client, payload, recipientEmails, existingEventId) {
+            const providerToken = await getGoogleProviderToken(client);
+            if (!providerToken) {
+                return { ok: false, reason: "Google再ログイン後に再実行してください（Calendar権限不足の可能性があります）。" };
+            }
+
+            const descriptionLines = [
+                payload.content || "",
+                payload.contact_phone ? `連絡先電話: ${payload.contact_phone}` : "",
+                payload.contact_email ? `連絡先メール: ${payload.contact_email}` : "",
+                payload.remarks ? `備考: ${payload.remarks}` : "",
+                payload.attendance_required ? "出欠確認あり" : ""
+            ].filter(Boolean);
+
+            const eventPayload = {
+                summary: payload.title,
+                description: descriptionLines.join("\n"),
+                start: {
+                    dateTime: buildCalendarDateTime(payload.notice_date, payload.start_time),
+                    timeZone: "Asia/Tokyo"
+                },
+                end: {
+                    dateTime: buildCalendarDateTime(payload.notice_date, payload.end_time),
+                    timeZone: "Asia/Tokyo"
+                },
+                attendees: recipientEmails.map((email) => ({ email }))
+            };
+
+            const endpoint = existingEventId
+                ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existingEventId)}?sendUpdates=all`
+                : "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all";
+            const method = existingEventId ? "PATCH" : "POST";
+
+            const response = await fetch(endpoint, {
+                method,
+                headers: {
+                    Authorization: `Bearer ${providerToken}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(eventPayload)
+            });
+
+            if (!response.ok) {
+                const detail = await response.text();
+                return { ok: false, reason: detail || "Google Calendar APIエラー" };
+            }
+
+            const eventData = await response.json();
+            return {
+                ok: true,
+                eventId: eventData.id || existingEventId || null,
+                htmlLink: eventData.htmlLink || null
+            };
         }
 
         function getMembersWithEmail() {
@@ -483,6 +572,7 @@
                 ? new Date(item.attendance_deadline).toISOString().slice(0, 16)
                 : "";
             document.getElementById("edit_attendance_deadline").disabled = !item.attendance_required;
+            document.getElementById("edit_google_calendar_invite").checked = false;
             
             // 配信対象を設定
             const visibility = item.visibility || 'all';
@@ -509,6 +599,7 @@
             const noValue = Number(document.getElementById("edit_notice_no").value);
             const visibility = document.querySelector('input[name="edit_visibility"]:checked').value;
             let selectedMembers = [];
+            const updateGoogleInvite = document.getElementById("edit_google_calendar_invite").checked;
             
             if (visibility === "specific") {
                 const checkboxes = document.querySelectorAll("#edit-members-list .member-checkbox:checked");
@@ -558,6 +649,8 @@
             if (!payload.attendance_required) {
                 payload.attendance_deadline = null;
             }
+
+            const recipientEmails = getRecipientEmailsByVisibility(visibility, selectedMembers);
 
             const { error } = await dbClient
                 .from("announcements")
@@ -619,6 +712,43 @@
                 }
             }
 
+            if (updateGoogleInvite) {
+                if (recipientEmails.length === 0) {
+                    editMessage.textContent = "更新は完了しましたが、Google招待対象メールが0件のためカレンダー更新は行っていません。";
+                    await loadAnnouncements();
+                    return;
+                }
+
+                const current = announcementByNo.get(noValue) || {};
+                const inviteResult = await syncGoogleCalendarInvite(
+                    dbClient,
+                    payload,
+                    recipientEmails,
+                    current.google_calendar_event_id || null
+                );
+
+                if (!inviteResult.ok) {
+                    editMessage.textContent = `更新は完了しましたが、Google招待の更新に失敗しました: ${inviteResult.reason}`;
+                    await loadAnnouncements();
+                    return;
+                }
+
+                const { error: calendarSaveError } = await dbClient
+                    .from("announcements")
+                    .update({
+                        google_calendar_event_id: inviteResult.eventId || null,
+                        google_calendar_event_link: inviteResult.htmlLink || null,
+                        google_calendar_synced_at: new Date().toISOString()
+                    })
+                    .eq("no", noValue);
+
+                if (calendarSaveError) {
+                    editMessage.textContent = `更新とGoogle招待は完了しましたが、連携情報の保存に失敗しました: ${calendarSaveError.message}`;
+                    await loadAnnouncements();
+                    return;
+                }
+            }
+
             closeEditModal();
             document.getElementById("announcement-message").textContent = "修正しました。";
             await loadAnnouncements();
@@ -663,7 +793,7 @@
             attendanceStatsByNo.clear();
             recipientsCountByNo.clear();
 
-            const baseSelect = "notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility,attendance_required,attendance_deadline";
+            const baseSelect = "notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility,attendance_required,attendance_deadline,google_calendar_event_id,google_calendar_event_link,google_calendar_synced_at";
             const { data, error } = await dbClient
                 .from("announcements")
                 .select(baseSelect)

@@ -16,7 +16,8 @@ window.AUTH_CONFIG = {
     googleScopes: [
         "openid",
         "email",
-        "profile"
+        "profile",
+        "https://www.googleapis.com/auth/calendar.events"
     ]
 };
 

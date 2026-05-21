@@ -141,6 +141,9 @@ create table if not exists public.announcements (
     contact_phone text,
     contact_email text,
     remarks text,
+    google_calendar_event_id text,
+    google_calendar_event_link text,
+    google_calendar_synced_at timestamptz,
     visibility text not null default 'all' check (visibility in ('all', 'specific')),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
@@ -218,6 +221,9 @@ create table if not exists public.committee_activity_recipients (
 alter table public.announcements add column if not exists visibility text not null default 'all' check (visibility in ('all', 'specific'));
 alter table public.announcements add column if not exists attendance_required boolean not null default false;
 alter table public.announcements add column if not exists attendance_deadline timestamptz;
+alter table public.announcements add column if not exists google_calendar_event_id text;
+alter table public.announcements add column if not exists google_calendar_event_link text;
+alter table public.announcements add column if not exists google_calendar_synced_at timestamptz;
 alter table public.activity_records add column if not exists activity_status text check (activity_status in ('記録済', '未実施', '継続中', '保留中', '完了'));
 
 create index if not exists announcements_notice_date_idx

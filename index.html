@@ -41,6 +41,7 @@
                 <ul id="announcement-tile-list" class="space-y-2 text-sm">
                     <li class="text-gray-500">お知らせを読み込み中です...</li>
                 </ul>
+                <p id="announcement-tile-message" class="mt-2 text-xs text-gray-600"></p>
             </div>
         </section>
 
@@ -150,6 +151,39 @@
             return String(value || "").trim().toLowerCase();
         }
 
+        function attendanceStatusLabel(status) {
+            if (status === "attend") return "出席";
+            if (status === "absent") return "欠席";
+            if (status === "pending") return "未定";
+            return "未回答";
+        }
+
+        function attendanceStatusBadgeClass(status) {
+            if (status === "attend") return "bg-emerald-100 text-emerald-700";
+            if (status === "absent") return "bg-rose-100 text-rose-700";
+            if (status === "pending") return "bg-amber-100 text-amber-700";
+            return "bg-gray-100 text-gray-600";
+        }
+
+        function formatAnnouncementDateTime(dateTimeValue) {
+            if (!dateTimeValue) return "未設定";
+            const dt = new Date(dateTimeValue);
+            if (Number.isNaN(dt.getTime())) return String(dateTimeValue);
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, "0");
+            const d = String(dt.getDate()).padStart(2, "0");
+            const hh = String(dt.getHours()).padStart(2, "0");
+            const mm = String(dt.getMinutes()).padStart(2, "0");
+            return `${y}/${m}/${d} ${hh}:${mm}`;
+        }
+
+        function setAnnouncementTileMessage(text, isError = false) {
+            const target = document.getElementById("announcement-tile-message");
+            if (!target) return;
+            target.textContent = text || "";
+            target.className = `mt-2 text-xs ${isError ? "text-rose-700" : "text-gray-600"}`;
+        }
+
         function buildAnnouncementLine(item) {
             const dateText = formatAnnouncementDate(item.notice_date);
             const start = item.start_time ? String(item.start_time).slice(0, 5) : "--:--";
@@ -179,7 +213,7 @@
             return `${y}-${m}-${d}`;
         }
 
-        function renderAnnouncements(items) {
+        function renderAnnouncements(items, responseByNo = new Map(), onRespond = null) {
             const list = document.getElementById("announcement-tile-list");
             if (!list) return;
 
@@ -190,34 +224,82 @@
                 emptyItem.className = "text-gray-500";
                 emptyItem.textContent = "現在、お知らせはありません。";
                 list.appendChild(emptyItem);
+                setAnnouncementTileMessage("");
                 return;
             }
 
             const dotColors = ["bg-rose-500", "bg-amber-500", "bg-sky-500"];
             items.forEach((item, index) => {
                 const li = document.createElement("li");
-                li.className = "flex items-start gap-2 text-gray-700";
+                li.className = "text-gray-700 bg-gray-50 rounded-lg p-2";
+
+                const topRow = document.createElement("div");
+                topRow.className = "flex items-start gap-2";
 
                 const dot = document.createElement("span");
                 dot.className = `mt-1 inline-block w-1.5 h-1.5 rounded-full ${dotColors[index % dotColors.length]}`;
 
                 const text = document.createElement("span");
+                text.className = "flex-1";
                 text.textContent = buildAnnouncementLine(item);
 
-                li.appendChild(dot);
-                li.appendChild(text);
+                topRow.appendChild(dot);
+                topRow.appendChild(text);
+                li.appendChild(topRow);
+
+                if (item.attendance_required) {
+                    const noValue = Number(item.no);
+                    const myStatus = responseByNo.get(noValue) || "unanswered";
+
+                    const meta = document.createElement("p");
+                    meta.className = "text-xs text-gray-600 mt-2";
+                    meta.textContent = `回答期限: ${formatAnnouncementDateTime(item.attendance_deadline)}`;
+                    li.appendChild(meta);
+
+                    const statusWrap = document.createElement("p");
+                    statusWrap.className = "mt-1";
+                    const badge = document.createElement("span");
+                    badge.className = `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${attendanceStatusBadgeClass(myStatus)}`;
+                    badge.textContent = `自分の回答: ${attendanceStatusLabel(myStatus)}`;
+                    statusWrap.appendChild(badge);
+                    li.appendChild(statusWrap);
+
+                    const buttonRow = document.createElement("div");
+                    buttonRow.className = "mt-2 flex flex-wrap gap-1";
+                    const options = [
+                        { status: "attend", label: "出席", cls: "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" },
+                        { status: "absent", label: "欠席", cls: "bg-rose-100 text-rose-700 hover:bg-rose-200" },
+                        { status: "pending", label: "未定", cls: "bg-amber-100 text-amber-700 hover:bg-amber-200" }
+                    ];
+
+                    options.forEach((option) => {
+                        const btn = document.createElement("button");
+                        btn.type = "button";
+                        btn.className = `text-xs px-2 py-1 rounded ${option.cls}`;
+                        btn.textContent = option.label;
+                        btn.disabled = typeof onRespond !== "function";
+                        btn.addEventListener("click", async () => {
+                            if (typeof onRespond !== "function") return;
+                            await onRespond(noValue, option.status);
+                        });
+                        buttonRow.appendChild(btn);
+                    });
+
+                    li.appendChild(buttonRow);
+                }
+
                 list.appendChild(li);
             });
         }
 
-        async function loadAnnouncements(client, userEmail, userRole) {
+        async function loadAnnouncements(client, userEmail, userRole, responderName) {
             if (!client) {
                 renderAnnouncements([]);
                 return;
             }
 
             const today = getTodayDateString();
-            const baseSelect = "no,notice_date,start_time,end_time,title,content,visibility";
+            const baseSelect = "no,notice_date,start_time,end_time,title,content,visibility,attendance_required,attendance_deadline";
             const { data, error } = await client
                 .from("announcements")
                 .select(baseSelect)
@@ -230,10 +312,55 @@
             if (error) {
                 console.error("お知らせ読み込みエラー:", error);
                 renderAnnouncements([]);
+                setAnnouncementTileMessage("お知らせの読込に失敗しました。", true);
                 return;
             }
 
-            renderAnnouncements(data || []);
+            const rows = data || [];
+            const responseByNo = new Map();
+            const announcementNos = rows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
+
+            if (announcementNos.length > 0 && userEmail) {
+                const { data: myResponses, error: responseError } = await client
+                    .from("announcement_attendance_responses")
+                    .select("announcement_no,status")
+                    .in("announcement_no", announcementNos)
+                    .eq("responder_email", userEmail);
+
+                if (responseError) {
+                    console.error("出欠回答読込エラー:", responseError);
+                }
+
+                (myResponses || []).forEach((item) => {
+                    responseByNo.set(Number(item.announcement_no), item.status);
+                });
+            }
+
+            renderAnnouncements(rows, responseByNo, async (announcementNo, status) => {
+                if (!userEmail) return;
+
+                const nowIso = new Date().toISOString();
+                const payload = {
+                    announcement_no: announcementNo,
+                    responder_email: normalizeEmail(userEmail),
+                    responder_name: responderName || userEmail,
+                    status,
+                    responded_at: nowIso,
+                    updated_at: nowIso
+                };
+
+                const { error: upsertError } = await client
+                    .from("announcement_attendance_responses")
+                    .upsert(payload, { onConflict: "announcement_no,responder_email" });
+
+                if (upsertError) {
+                    setAnnouncementTileMessage("出欠回答の保存に失敗しました。", true);
+                    return;
+                }
+
+                setAnnouncementTileMessage(`出欠回答を保存しました（${attendanceStatusLabel(status)}）。`);
+                await loadAnnouncements(client, userEmail, userRole, responderName);
+            });
         }
 
         portalAuth.init({
@@ -254,7 +381,10 @@
                 }
 
                 const userEmail = context.session?.email || context.profile?.email || "";
-                await loadAnnouncements(context.client, userEmail, context.role || "viewer");
+                const responderName = (context.session && context.session.displayName)
+                    || (context.profile && context.profile.display_name)
+                    || userEmail;
+                await loadAnnouncements(context.client, userEmail, context.role || "viewer", responderName);
             }
         });
 
