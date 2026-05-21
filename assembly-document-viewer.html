@@ -72,6 +72,7 @@
                         <input id="ink-size-top" type="range" min="1" max="24" value="3" class="w-24">
                     </label>
                     <button id="ink-undo-btn-top" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">元に戻す</button>
+                    <button id="ink-page-clear-btn-top" type="button" class="px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold">頁内消去</button>
                     <button id="ink-clear-btn-top" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">全消去</button>
                     <span id="ink-status-top" class="text-gray-500"></span>
                 </div>
@@ -146,6 +147,7 @@
                         <input id="ink-size" type="range" min="1" max="24" value="3" class="w-24">
                     </label>
                     <button id="ink-undo-btn" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">元に戻す</button>
+                    <button id="ink-page-clear-btn" type="button" class="px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold">頁内消去</button>
                     <button id="ink-clear-btn" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">全消去</button>
                     <span id="ink-status" class="text-gray-500"></span>
                 </div>
@@ -318,6 +320,21 @@
             </div>
         </div>
     </div>
+    <div id="ink-clear-confirm-modal" class="fixed inset-0 z-50 hidden bg-black/40 p-4">
+        <div class="mx-auto mt-20 max-w-md bg-white rounded-xl shadow-2xl border border-amber-200">
+            <div class="px-4 py-3 border-b border-amber-100 flex items-center justify-between">
+                <h2 class="text-base font-bold text-amber-800"><i class="fas fa-eraser mr-1"></i>手書き消去の確認</h2>
+                <button id="ink-clear-confirm-close-btn" type="button" class="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-600">閉じる</button>
+            </div>
+            <div class="p-4">
+                <p id="ink-clear-confirm-message" class="text-sm text-slate-700"></p>
+            </div>
+            <div class="px-4 py-3 border-t border-amber-100 flex items-center justify-end gap-2">
+                <button id="ink-clear-confirm-cancel-btn" type="button" class="px-3 py-2 rounded border border-gray-300 bg-white hover:bg-gray-50 text-sm text-gray-700">キャンセル</button>
+                <button id="ink-clear-confirm-exec-btn" type="button" class="px-3 py-2 rounded bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold">実行</button>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -349,6 +366,7 @@
         let lastSelectionRect = null;
         let suppressSelectionAutoCloseUntil = 0;
         let documentNotesHasPageNumber = null;
+        let pendingInkClearMode = "all";
 
         function markSelectionPopoverInteraction() {
             suppressSelectionAutoCloseUntil = Date.now() + 1200;
@@ -2348,12 +2366,62 @@
             }
         }
 
-        async function confirmAndClearInkNote() {
-            const ok = window.confirm("この資料の手書きを全て消去します。よろしいですか？");
-            if (!ok) {
+        async function clearCurrentPageInkNote() {
+            const key = getPdfPageKey();
+            const hasCurrentPageInk = Array.isArray(inkPages[key]) && inkPages[key].length > 0;
+            if (!hasCurrentPageInk && inkStrokes.length === 0) {
+                setInkStatus(`このページ(${currentPageNumber})に削除対象はありません`);
                 return;
             }
-            await clearInkNote();
+
+            inkPages[key] = [];
+            loadCurrentPageInkFromStore();
+            updateInkCanvasVisibility();
+            redrawInkCanvas();
+            setInkStatus(`手書き削除中...（${currentPageNumber}ページ）`);
+            await saveInkNote({ quiet: false, allowEmpty: true });
+        }
+
+        function openInkClearConfirmDialog(mode) {
+            pendingInkClearMode = mode === "page" ? "page" : "all";
+            const modal = document.getElementById("ink-clear-confirm-modal");
+            const message = document.getElementById("ink-clear-confirm-message");
+            if (!modal || !message) {
+                return;
+            }
+
+            message.textContent = pendingInkClearMode === "page"
+                ? `表示中の${currentPageNumber}ページにある手書き（ペン・マーカー）だけを消去します。実行しますか？`
+                : "この資料のすべてのページにある手書き（ペン・マーカー）を消去します。実行しますか？";
+            modal.classList.remove("hidden");
+        }
+
+        function closeInkClearConfirmDialog() {
+            const modal = document.getElementById("ink-clear-confirm-modal");
+            if (!modal) {
+                return;
+            }
+            modal.classList.add("hidden");
+        }
+
+        async function executeInkClearByMode() {
+            const execBtn = document.getElementById("ink-clear-confirm-exec-btn");
+            if (execBtn) {
+                execBtn.disabled = true;
+            }
+
+            try {
+                if (pendingInkClearMode === "page") {
+                    await clearCurrentPageInkNote();
+                } else {
+                    await clearInkNote();
+                }
+            } finally {
+                if (execBtn) {
+                    execBtn.disabled = false;
+                }
+                closeInkClearConfirmDialog();
+            }
         }
 
         function undoInkStroke() {
@@ -2552,10 +2620,20 @@
         document.getElementById("ink-color").addEventListener("input", (event) => setInkColorValue(event.target.value));
         document.getElementById("ink-size-top").addEventListener("input", (event) => setInkSizeValue(event.target.value));
         document.getElementById("ink-size").addEventListener("input", (event) => setInkSizeValue(event.target.value));
-        document.getElementById("ink-clear-btn-top").addEventListener("click", confirmAndClearInkNote);
-        document.getElementById("ink-clear-btn").addEventListener("click", confirmAndClearInkNote);
+        document.getElementById("ink-page-clear-btn-top").addEventListener("click", () => openInkClearConfirmDialog("page"));
+        document.getElementById("ink-page-clear-btn").addEventListener("click", () => openInkClearConfirmDialog("page"));
+        document.getElementById("ink-clear-btn-top").addEventListener("click", () => openInkClearConfirmDialog("all"));
+        document.getElementById("ink-clear-btn").addEventListener("click", () => openInkClearConfirmDialog("all"));
         document.getElementById("ink-undo-btn-top").addEventListener("click", undoInkStroke);
         document.getElementById("ink-undo-btn").addEventListener("click", undoInkStroke);
+        document.getElementById("ink-clear-confirm-close-btn").addEventListener("click", closeInkClearConfirmDialog);
+        document.getElementById("ink-clear-confirm-cancel-btn").addEventListener("click", closeInkClearConfirmDialog);
+        document.getElementById("ink-clear-confirm-exec-btn").addEventListener("click", executeInkClearByMode);
+        document.getElementById("ink-clear-confirm-modal").addEventListener("click", (event) => {
+            if (event.target.id === "ink-clear-confirm-modal") {
+                closeInkClearConfirmDialog();
+            }
+        });
         document.getElementById("pdf-prev-page-btn-top").addEventListener("click", () => goToPdfPage(currentPageNumber - 1));
         document.getElementById("pdf-next-page-btn-top").addEventListener("click", () => goToPdfPage(currentPageNumber + 1));
         document.getElementById("pdf-prev-page-btn").addEventListener("click", () => goToPdfPage(currentPageNumber - 1));
@@ -2670,6 +2748,7 @@
         document.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
                 closeTagHelpModal();
+                closeInkClearConfirmDialog();
             }
         });
         document.getElementById("tag-float-cancel-btn").addEventListener("click", () => {
