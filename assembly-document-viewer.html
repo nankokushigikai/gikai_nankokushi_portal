@@ -42,7 +42,6 @@
 
     <main class="container mx-auto py-4 px-4">
         <div class="bg-white rounded-xl shadow-sm p-3 md:p-4">
-            <p id="viewer-subtitle" class="text-sm text-gray-600 mb-3"></p>
             <div class="mb-3 flex items-center justify-between gap-3 flex-wrap text-sm">
                 <span id="pdf-page-indicator-top" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 font-semibold shadow-sm hover:bg-indigo-100 transition-colors select-none">ページ 0 / 0</span>
                 <div id="ink-toolbar-top" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
@@ -349,6 +348,7 @@
         let termLookupRows = [];
         let lastSelectionRect = null;
         let suppressSelectionAutoCloseUntil = 0;
+        let documentNotesHasPageNumber = null;
 
         function markSelectionPopoverInteraction() {
             suppressSelectionAutoCloseUntil = Date.now() + 1200;
@@ -1055,6 +1055,11 @@
             return error.message || error.details || error.hint || "不明なエラー";
         }
 
+        function isPageNumberMissingError(error) {
+            const msg = formatSupabaseError(error).toLowerCase();
+            return msg.includes("page_number") || msg.includes("column") || msg.includes("schema cache");
+        }
+
         function getTagPinLayer() {
             return document.getElementById("tag-pin-layer");
         }
@@ -1610,6 +1615,8 @@
                 return;
             }
 
+            await saveTextNote({ quiet: true });
+
             syncCurrentPageInkToStore();
             currentPageNumber = bounded;
             await renderPdfPage(currentPageNumber);
@@ -1618,6 +1625,7 @@
             updateInkCanvasVisibility();
             redrawInkCanvas();
             renderTagPinsForCurrentPage();
+            await loadTextNote();
             setInkStatus(`表示中: ${currentPageNumber}ページ`);
         }
 
@@ -1674,6 +1682,7 @@
         async function loadTextNote() {
             const memberId = getNoteMemberId();
             const textarea = document.getElementById("memo-textarea");
+            const pageNumber = Number(currentPageNumber || 1);
 
             textarea.value = "";
 
@@ -1687,28 +1696,59 @@
                 return;
             }
 
-            setMemoStatus("メモ読込中...");
+            setMemoStatus(`メモ読込中...（${pageNumber}ページ）`);
 
             try {
                 const supabase = getNoteClient();
-                const { data, error } = await supabase
-                    .from("document_notes")
-                    .select("note_text, updated_at")
-                    .eq("member_id", memberId)
-                    .eq("session_id", currentSessionId)
-                    .eq("document_name", currentFileName)
-                    .maybeSingle();
+                let data = null;
 
-                if (error) {
-                    throw error;
+                if (documentNotesHasPageNumber !== false) {
+                    const pageResult = await supabase
+                        .from("document_notes")
+                        .select("note_text, updated_at")
+                        .eq("member_id", memberId)
+                        .eq("session_id", currentSessionId)
+                        .eq("document_name", currentFileName)
+                        .eq("page_number", pageNumber)
+                        .maybeSingle();
+
+                    if (pageResult.error) {
+                        if (isPageNumberMissingError(pageResult.error)) {
+                            documentNotesHasPageNumber = false;
+                        } else {
+                            throw pageResult.error;
+                        }
+                    } else {
+                        documentNotesHasPageNumber = true;
+                        data = pageResult.data;
+                    }
+                }
+
+                if (documentNotesHasPageNumber === false) {
+                    const legacyResult = await supabase
+                        .from("document_notes")
+                        .select("note_text, updated_at")
+                        .eq("member_id", memberId)
+                        .eq("session_id", currentSessionId)
+                        .eq("document_name", currentFileName)
+                        .maybeSingle();
+
+                    if (legacyResult.error) {
+                        throw legacyResult.error;
+                    }
+                    data = legacyResult.data;
                 }
 
                 if (data && data.note_text) {
                     textarea.value = data.note_text;
                     const dt = new Date(data.updated_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-                    setMemoStatus(`最終保存: ${dt}`);
+                    setMemoStatus(documentNotesHasPageNumber === false
+                        ? `最終保存: ${dt}（資料単位）`
+                        : `最終保存: ${dt}（${pageNumber}ページ）`);
                 } else {
-                    setMemoStatus("未保存");
+                    setMemoStatus(documentNotesHasPageNumber === false
+                        ? "未保存（資料単位）"
+                        : `未保存（${pageNumber}ページ）`);
                 }
             } catch (error) {
                 console.warn("テキストメモ読込エラー:", error);
@@ -1716,43 +1756,85 @@
             }
         }
 
-        async function saveTextNote() {
+        async function saveTextNote(options = {}) {
+            const quiet = !!options.quiet;
             const memberId = getNoteMemberId();
             const textarea = document.getElementById("memo-textarea");
             const saveBtn = document.getElementById("memo-save-btn");
+            const pageNumber = Number(currentPageNumber || 1);
 
             if (!memberId || !currentSessionId || !currentFileName) {
                 setMemoStatus("保存対象の情報が不足しています");
-                return;
+                return false;
             }
 
-            saveBtn.disabled = true;
-            setMemoStatus("メモ保存中...");
+            if (!quiet) {
+                saveBtn.disabled = true;
+                setMemoStatus(`メモ保存中...（${pageNumber}ページ）`);
+            }
 
             try {
                 const supabase = getNoteClient();
                 const now = new Date().toISOString();
-                const { error } = await supabase
-                    .from("document_notes")
-                    .upsert({
-                        member_id: memberId,
-                        session_id: currentSessionId,
-                        document_name: currentFileName,
-                        note_text: textarea.value,
-                        updated_at: now
-                    }, { onConflict: "member_id,session_id,document_name" });
+                let error = null;
+
+                if (documentNotesHasPageNumber !== false) {
+                    const pageResult = await supabase
+                        .from("document_notes")
+                        .upsert({
+                            member_id: memberId,
+                            session_id: currentSessionId,
+                            document_name: currentFileName,
+                            page_number: pageNumber,
+                            note_text: textarea.value,
+                            updated_at: now
+                        }, { onConflict: "member_id,session_id,document_name,page_number" });
+
+                    if (pageResult.error) {
+                        if (isPageNumberMissingError(pageResult.error)) {
+                            documentNotesHasPageNumber = false;
+                        } else {
+                            throw pageResult.error;
+                        }
+                    } else {
+                        documentNotesHasPageNumber = true;
+                    }
+                }
+
+                if (documentNotesHasPageNumber === false) {
+                    const legacyResult = await supabase
+                        .from("document_notes")
+                        .upsert({
+                            member_id: memberId,
+                            session_id: currentSessionId,
+                            document_name: currentFileName,
+                            note_text: textarea.value,
+                            updated_at: now
+                        }, { onConflict: "member_id,session_id,document_name" });
+                    error = legacyResult.error;
+                }
 
                 if (error) {
                     throw error;
                 }
 
                 const dt = new Date(now).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-                setMemoStatus(`最終保存: ${dt}`);
+                if (!quiet) {
+                    setMemoStatus(documentNotesHasPageNumber === false
+                        ? `最終保存: ${dt}（資料単位）`
+                        : `最終保存: ${dt}（${pageNumber}ページ）`);
+                }
+                return true;
             } catch (error) {
                 console.warn("テキストメモ保存エラー:", error);
-                setMemoStatus("メモ保存エラー");
+                if (!quiet) {
+                    setMemoStatus("メモ保存エラー");
+                }
+                return false;
             } finally {
-                saveBtn.disabled = false;
+                if (!quiet) {
+                    saveBtn.disabled = false;
+                }
             }
         }
 
@@ -2439,7 +2521,6 @@
             currentFileName = fileName;
 
             document.getElementById("viewer-title").textContent = label;
-            document.getElementById("viewer-subtitle").textContent = session ? `第${session}回議会` : "議会資料";
             const topSessionLabel = document.getElementById("viewer-subtitle-top");
             if (topSessionLabel) {
                 topSessionLabel.textContent = session ? `第${session}回議会` : "";
