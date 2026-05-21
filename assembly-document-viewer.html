@@ -43,6 +43,9 @@
             <div class="mb-3 flex items-center justify-between gap-3 flex-wrap text-sm">
                 <span id="pdf-page-indicator-top" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 font-semibold shadow-sm hover:bg-indigo-100 transition-colors select-none">ページ 0 / 0</span>
                 <div id="ink-toolbar-top" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
+                    <button id="ink-visibility-btn-top" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold whitespace-nowrap">
+                        手書きを隠す
+                    </button>
                     <button id="tag-list-btn-top" type="button" class="ml-1 px-3 py-2 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-semibold whitespace-nowrap">
                         <i class="fas fa-list mr-1"></i>タグ一覧
                     </button>
@@ -109,6 +112,9 @@
             <div class="mt-3 flex items-center justify-between gap-3 flex-wrap text-sm">
                 <span id="pdf-page-indicator" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 font-semibold shadow-sm hover:bg-indigo-100 transition-colors select-none">ページ 0 / 0</span>
                 <div id="ink-toolbar" class="flex-1 flex items-center justify-center gap-2 flex-wrap text-xs min-w-[320px]">
+                    <button id="ink-visibility-btn" type="button" class="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold whitespace-nowrap">
+                        手書きを隠す
+                    </button>
                     <button id="tag-list-btn" type="button" class="ml-1 px-3 py-2 rounded-lg border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-semibold whitespace-nowrap">
                         <i class="fas fa-list mr-1"></i>タグ一覧
                     </button>
@@ -280,6 +286,7 @@
         let activePdfObjectUrl = null;
         let _noteClient = null;
         let _noteMemberId = null;
+        let inkVisible = true;
         let inkModeEnabled = false;
         let inkColor = "#ff2d55";
         let inkSize = 3;
@@ -487,6 +494,30 @@
             document.getElementById("ink-tool-marker-btn").className = isMarkerActive ? markerClassesOn : markerClassesOff;
             document.getElementById("ink-tool-pen-btn-top").className = isPenActive ? penClassesOn : penClassesOff;
             document.getElementById("ink-tool-marker-btn-top").className = isMarkerActive ? markerClassesOn : markerClassesOff;
+        }
+
+        function updateInkVisibilityButtons() {
+            const hasInk = inkStrokes.length > 0;
+            [document.getElementById("ink-visibility-btn"), document.getElementById("ink-visibility-btn-top")].forEach((button) => {
+                if (!button) {
+                    return;
+                }
+                button.disabled = !hasInk;
+                button.textContent = inkVisible ? "手書きを隠す" : "手書きを表示する";
+                button.className = button.disabled
+                    ? "px-3 py-2 rounded-lg border border-gray-200 bg-gray-100 text-gray-400 font-semibold whitespace-nowrap cursor-not-allowed"
+                    : "px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold whitespace-nowrap";
+            });
+        }
+
+        function toggleInkVisibility() {
+            if (inkStrokes.length === 0) {
+                return;
+            }
+            inkVisible = !inkVisible;
+            updateInkCanvasVisibility();
+            redrawInkCanvas();
+            setInkStatus(inkVisible ? "手書きを表示中" : "手書きを非表示にしました");
         }
 
         function syncInkSettingInputs() {
@@ -1277,7 +1308,7 @@
             const hasInk = inkStrokes.length > 0;
 
             // 手書きデータは常時表示し、描画入力だけモードON時に有効化する
-            canvas.classList.toggle("hidden", !(hasInk || canDraw));
+            canvas.classList.toggle("hidden", !((hasInk && inkVisible) || canDraw));
             canvas.style.pointerEvents = canDraw ? "auto" : "none";
             if (textLayer) {
                 textLayer.style.pointerEvents = canDraw ? "none" : "auto";
@@ -1285,6 +1316,7 @@
             }
 
             updateInkToolButtons();
+            updateInkVisibilityButtons();
             syncInkSettingInputs();
         }
 
@@ -1293,6 +1325,7 @@
             inkStrokes = [];
             currentInkStroke = null;
             inkModeEnabled = false;
+            inkVisible = true;
             updateInkCanvasVisibility();
             redrawInkCanvas();
         }
@@ -1508,6 +1541,7 @@
             currentPageNumber = bounded;
             await renderPdfPage(currentPageNumber);
             loadCurrentPageInkFromStore();
+            inkVisible = true;
             updateInkCanvasVisibility();
             redrawInkCanvas();
             renderTagPinsForCurrentPage();
@@ -1546,6 +1580,7 @@
                 inkPages = data ? parseInkPayload(data.ink_payload) : {};
                 loadCurrentPageInkFromStore();
                 inkModeEnabled = false;
+                inkVisible = true;
                 updateInkCanvasVisibility();
                 requestAnimationFrame(() => requestAnimationFrame(() => redrawInkCanvas()));
 
@@ -2215,10 +2250,13 @@
         async function closeViewer() {
             const finishBtn = document.getElementById("finish-btn");
             finishBtn.disabled = true;
-            setInkStatus("終了前に手書きを自動保存中...");
+            setInkStatus("終了前に手書きとメモを保存中...");
 
             try {
-                await saveInkNote({ quiet: false, allowEmpty: true });
+                await Promise.all([
+                    saveInkNote({ quiet: false, allowEmpty: true }),
+                    saveTextNote()
+                ]);
                 // 保存成功メッセージを少し表示した後に終了
                 await new Promise(resolve => setTimeout(resolve, 800));
             } catch (error) {
@@ -2318,6 +2356,8 @@
         }
 
         document.getElementById("finish-btn").addEventListener("click", closeViewer);
+        document.getElementById("ink-visibility-btn-top").addEventListener("click", toggleInkVisibility);
+        document.getElementById("ink-visibility-btn").addEventListener("click", toggleInkVisibility);
         document.getElementById("ink-tool-pen-btn-top").addEventListener("click", () => setInkTool("pen"));
         document.getElementById("ink-tool-marker-btn-top").addEventListener("click", () => setInkTool("marker"));
         document.getElementById("ink-tool-pen-btn").addEventListener("click", () => setInkTool("pen"));
