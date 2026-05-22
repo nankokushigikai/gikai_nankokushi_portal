@@ -186,7 +186,7 @@
             return Array.from(new Set([one, two])).map((minutes) => ({ method: "popup", minutes }));
         }
 
-        async function createPersonalCalendarEvent(client, item, reminderMinutes1, reminderMinutes2) {
+        async function upsertPersonalCalendarEvent(client, item, reminderMinutes1, reminderMinutes2, existingEventId = "") {
             const providerToken = await getGoogleProviderToken(client);
             if (!providerToken) {
                 return { ok: false, reason: "Google再ログイン後に再実行してください（Calendar権限不足の可能性があります）。" };
@@ -217,8 +217,13 @@
                 }
             };
 
-            const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-                method: "POST",
+            const endpoint = existingEventId
+                ? `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(existingEventId)}`
+                : "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+            const method = existingEventId ? "PATCH" : "POST";
+
+            const response = await fetch(endpoint, {
+                method,
                 headers: {
                     Authorization: `Bearer ${providerToken}`,
                     "Content-Type": "application/json"
@@ -232,7 +237,35 @@
             }
 
             const eventData = await response.json();
-            return { ok: true, htmlLink: eventData.htmlLink || "" };
+            return { ok: true, eventId: eventData.id || existingEventId || "", htmlLink: eventData.htmlLink || "" };
+        }
+
+        async function deletePersonalCalendarEvent(client, eventId) {
+            const providerToken = await getGoogleProviderToken(client);
+            if (!providerToken) {
+                return { ok: false, reason: "Google再ログイン後に再実行してください（Calendar権限不足の可能性があります）。" };
+            }
+
+            const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`, {
+                method: "DELETE",
+                headers: {
+                    Authorization: `Bearer ${providerToken}`
+                }
+            });
+
+            if (response.status === 204 || response.status === 200 || response.status === 404) {
+                return { ok: true };
+            }
+
+            const detail = await response.text();
+            return { ok: false, reason: detail || `HTTP ${response.status}` };
+        }
+
+        async function upsertAnnouncementCalendarLink(client, payload) {
+            const { error } = await client
+                .from("announcement_calendar_links")
+                .upsert(payload, { onConflict: "announcement_no,member_email" });
+            return { ok: !error, error };
         }
 
         function attendanceStatusLabel(status) {
@@ -323,9 +356,20 @@
                 const dot = document.createElement("span");
                 dot.className = `mt-1 inline-block w-1.5 h-1.5 rounded-full ${dotColors[index % dotColors.length]}`;
 
+                const lifecycle = String(item.lifecycle_status || "active");
+                const isCanceled = lifecycle === "canceled";
+                const personalLink = item.personal_link || null;
+                const currentVersion = Number(item.version_no || 1);
+                const linkedVersion = Number(personalLink && personalLink.last_synced_version ? personalLink.last_synced_version : 0);
+                const needsUpdate = !!(personalLink && linkedVersion > 0 && linkedVersion < currentVersion && !isCanceled);
+                const needsCancelDelete = !!(isCanceled && personalLink && personalLink.google_event_id && personalLink.sync_status !== "canceled_synced");
+
                 const text = document.createElement("span");
                 text.className = "flex-1";
                 text.textContent = buildAnnouncementLine(item);
+                if (isCanceled) {
+                    text.classList.add("line-through", "text-gray-500");
+                }
 
                 topRow.appendChild(dot);
                 topRow.appendChild(text);
@@ -336,16 +380,37 @@
                 const calendarBtn = document.createElement("button");
                 calendarBtn.type = "button";
                 calendarBtn.className = "text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200";
-                calendarBtn.textContent = "Googleカレンダー連携";
+                if (needsCancelDelete) {
+                    calendarBtn.textContent = "取消済み予定を削除";
+                } else if (needsUpdate) {
+                    calendarBtn.textContent = "Google予定を更新";
+                } else if (personalLink && personalLink.google_event_link) {
+                    calendarBtn.textContent = "Google予定を開く";
+                } else {
+                    calendarBtn.textContent = "Googleカレンダー連携";
+                }
                 calendarBtn.disabled = typeof onCalendarLink !== "function";
                 calendarBtn.addEventListener("click", async () => {
                     if (typeof onCalendarLink !== "function") return;
                     await onCalendarLink(item);
                 });
                 calendarRow.appendChild(calendarBtn);
+
+                if (needsUpdate) {
+                    const updateNote = document.createElement("p");
+                    updateNote.className = "mt-1 text-xs font-semibold text-amber-700";
+                    updateNote.textContent = "日程・内容が更新されています。Google予定も更新してください。";
+                    calendarRow.appendChild(updateNote);
+                }
+                if (needsCancelDelete) {
+                    const cancelNote = document.createElement("p");
+                    cancelNote.className = "mt-1 text-xs font-semibold text-gray-700";
+                    cancelNote.textContent = "このお知らせは取消済みです。Google予定も削除してください。";
+                    calendarRow.appendChild(cancelNote);
+                }
                 li.appendChild(calendarRow);
 
-                if (item.attendance_required) {
+                if (item.attendance_required && !isCanceled) {
                     const noValue = Number(item.no);
                     const myStatus = responseByNo.get(noValue) || "unanswered";
 
@@ -408,7 +473,7 @@
             }
 
             const today = getTodayDateString();
-            const baseSelect = "no,notice_date,start_time,end_time,title,content,contact_phone,contact_email,remarks,visibility,attendance_required,attendance_deadline";
+            const baseSelect = "no,notice_date,start_time,end_time,title,content,contact_phone,contact_email,remarks,visibility,attendance_required,attendance_deadline,lifecycle_status,version_no,canceled_at";
             const { data, error } = await client
                 .from("announcements")
                 .select(baseSelect)
@@ -426,8 +491,26 @@
             }
 
             const rows = data || [];
+            const normalizedUserEmail = normalizeEmail(userEmail);
             const responseByNo = new Map();
             const announcementNos = rows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
+
+            const personalLinkByNo = new Map();
+            if (announcementNos.length > 0 && normalizedUserEmail) {
+                const { data: links } = await client
+                    .from("announcement_calendar_links")
+                    .select("announcement_no,google_event_id,google_event_link,last_synced_version,sync_status")
+                    .in("announcement_no", announcementNos)
+                    .eq("member_email", normalizedUserEmail);
+
+                (links || []).forEach((link) => {
+                    personalLinkByNo.set(Number(link.announcement_no), link);
+                });
+            }
+
+            rows.forEach((item) => {
+                item.personal_link = personalLinkByNo.get(Number(item.no)) || null;
+            });
 
             if (announcementNos.length > 0 && userEmail) {
                 const { data: myResponses, error: responseError } = await client
@@ -451,7 +534,7 @@
                 const nowIso = new Date().toISOString();
                 const payload = {
                     announcement_no: announcementNo,
-                    responder_email: normalizeEmail(userEmail),
+                    responder_email: normalizedUserEmail,
                     responder_name: responderName || userEmail,
                     status,
                     responded_at: nowIso,
@@ -470,33 +553,83 @@
                 setAnnouncementTileMessage(`出欠回答を保存しました（${attendanceStatusLabel(status)}）。`);
                 await loadAnnouncements(client, userEmail, userRole, responderName);
             }, async (item) => {
-                const confirmed = window.confirm("このお知らせを自分のGoogleカレンダーに登録しますか？");
-                if (!confirmed) {
+                const lifecycle = String(item.lifecycle_status || "active");
+                const isCanceled = lifecycle === "canceled";
+                const link = item.personal_link || null;
+                const currentVersion = Number(item.version_no || 1);
+                const linkedVersion = Number(link && link.last_synced_version ? link.last_synced_version : 0);
+                const needsUpdate = !!(link && linkedVersion > 0 && linkedVersion < currentVersion && !isCanceled);
+
+                if (!isCanceled && link && link.google_event_link && !needsUpdate) {
+                    window.open(link.google_event_link, "_blank", "noopener");
+                    return;
+                }
+
+                if (isCanceled) {
+                    if (!link || !link.google_event_id) {
+                        setAnnouncementTileMessage("このお知らせの個人Google予定は未連携です。", false);
+                        return;
+                    }
+
+                    const confirmedDelete = window.confirm("取消済みのお知らせです。自分のGoogle予定を削除しますか？");
+                    if (!confirmedDelete) return;
+
+                    const deleteResult = await deletePersonalCalendarEvent(client, link.google_event_id);
+                    if (!deleteResult.ok) {
+                        setAnnouncementTileMessage("Google予定の削除に失敗しました。", true);
+                        return;
+                    }
+
+                    await upsertAnnouncementCalendarLink(client, {
+                        announcement_no: Number(item.no),
+                        member_email: normalizedUserEmail,
+                        google_event_id: null,
+                        google_event_link: null,
+                        last_synced_version: Number(item.version_no || 1),
+                        sync_status: "canceled_synced",
+                        last_synced_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+
+                    setAnnouncementTileMessage("取消済みのGoogle予定を削除しました。", false);
+                    await loadAnnouncements(client, userEmail, userRole, responderName);
                     return;
                 }
 
                 const reminder1Input = window.prompt("通知1（分前）を入力してください", "60");
-                if (reminder1Input === null) {
-                    return;
-                }
+                if (reminder1Input === null) return;
                 const reminder2Input = window.prompt("通知2（分前）を入力してください", "30");
-                if (reminder2Input === null) {
-                    return;
-                }
+                if (reminder2Input === null) return;
 
-                const createResult = await createPersonalCalendarEvent(client, item, reminder1Input, reminder2Input);
-                if (!createResult.ok) {
+                const confirmed = window.confirm("このお知らせを自分のGoogleカレンダーに登録/更新しますか？");
+                if (!confirmed) return;
+
+                const existingEventId = link && link.google_event_id ? String(link.google_event_id) : "";
+                const syncResult = await upsertPersonalCalendarEvent(client, item, reminder1Input, reminder2Input, existingEventId);
+                if (!syncResult.ok) {
                     setAnnouncementTileMessage("Googleカレンダー連携に失敗しました。再ログイン後に再実行してください。", true);
                     return;
                 }
 
-                setAnnouncementTileMessage("Googleカレンダーへ登録しました。", false);
-                if (createResult.htmlLink) {
-                    const openCalendar = window.confirm("作成したGoogleカレンダー予定を開きますか？");
+                await upsertAnnouncementCalendarLink(client, {
+                    announcement_no: Number(item.no),
+                    member_email: normalizedUserEmail,
+                    google_event_id: syncResult.eventId || existingEventId || null,
+                    google_event_link: syncResult.htmlLink || (link && link.google_event_link) || null,
+                    last_synced_version: Number(item.version_no || 1),
+                    sync_status: "synced",
+                    last_synced_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                });
+
+                setAnnouncementTileMessage("Googleカレンダーへ登録/更新しました。", false);
+                if (syncResult.htmlLink) {
+                    const openCalendar = window.confirm("Googleカレンダー予定を開きますか？");
                     if (openCalendar) {
-                        window.open(createResult.htmlLink, "_blank", "noopener");
+                        window.open(syncResult.htmlLink, "_blank", "noopener");
                     }
                 }
+                await loadAnnouncements(client, userEmail, userRole, responderName);
             });
         }
 

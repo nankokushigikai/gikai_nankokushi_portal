@@ -220,6 +220,7 @@
         const attendanceStatsByNo = new Map();
         const recipientsCountByNo = new Map();
         const inviteTargetCountByNo = new Map();
+        const personalCalendarAlertsByNo = new Map();
         let attendanceAnnouncements = [];
 
         const MEMBER_GROUPS = [
@@ -290,6 +291,40 @@
             const hh = String(dt.getHours()).padStart(2, "0");
             const mm = String(dt.getMinutes()).padStart(2, "0");
             return `${y}/${m}/${d} ${hh}:${mm}`;
+        }
+
+        function getMemberDisplayNameByEmail(email) {
+            const normalizedEmail = normalizeEmail(email);
+            const member = allMembers.find((item) => normalizeEmail(item.email) === normalizedEmail);
+            return member?.full_name || email || "未設定";
+        }
+
+        function buildPersonalSyncAlertHtml(alerts) {
+            if (!alerts) {
+                return "";
+            }
+
+            const blocks = [];
+            if (Array.isArray(alerts.needsUpdate) && alerts.needsUpdate.length > 0) {
+                blocks.push(`
+                    <div class="rounded bg-amber-50 border border-amber-200 p-2">
+                        <p><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">要更新 ${alerts.needsUpdate.length}名</span></p>
+                        <p class="mt-1 text-xs text-amber-900 leading-5 break-words">${escapeHtml(alerts.needsUpdate.join("、"))}</p>
+                    </div>
+                `);
+            }
+            if (Array.isArray(alerts.canceledPending) && alerts.canceledPending.length > 0) {
+                blocks.push(`
+                    <div class="rounded bg-gray-50 border border-gray-200 p-2">
+                        <p><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-700">取消未反映 ${alerts.canceledPending.length}名</span></p>
+                        <p class="mt-1 text-xs text-gray-700 leading-5 break-words">${escapeHtml(alerts.canceledPending.join("、"))}</p>
+                    </div>
+                `);
+            }
+
+            return blocks.length > 0
+                ? `<div class="mt-2 space-y-2">${blocks.join("")}</div>`
+                : "";
         }
 
         function attendanceStatusLabel(status) {
@@ -578,7 +613,7 @@
                 return;
             }
 
-            const confirmed = window.confirm("このお知らせを削除します。Googleカレンダー連携済みの場合は、カレンダー予定も削除します。よろしいですか？");
+            const confirmed = window.confirm("このお知らせを取消にします。トップ画面では取消表示になり、Googleカレンダー連携済みの場合は共有予定を削除します。よろしいですか？");
             if (!confirmed) {
                 return;
             }
@@ -591,27 +626,55 @@
                 }
             }
 
+            const canceledAt = new Date().toISOString();
+
             const { error } = await dbClient
                 .from("announcements")
-                .delete()
+                .update({
+                    lifecycle_status: "canceled",
+                    canceled_at: canceledAt,
+                    canceled_by_email: currentUserEmail || null,
+                    cancel_note: "管理画面で取消",
+                    version_no: Number(target.version_no || 1) + 1,
+                    google_calendar_event_id: null,
+                    google_calendar_event_link: null,
+                    google_calendar_synced_at: canceledAt,
+                    updated_at: canceledAt
+                })
                 .eq("no", Number(announcementNo));
 
             if (error) {
-                message.textContent = "お知らせの削除に失敗しました: " + error.message;
+                message.textContent = "お知らせの取消に失敗しました: " + error.message;
+                return;
+            }
+
+            const { error: linkUpdateError } = await dbClient
+                .from("announcement_calendar_links")
+                .update({
+                    sync_status: "canceled_pending",
+                    updated_at: canceledAt
+                })
+                .eq("announcement_no", Number(announcementNo))
+                .not("google_event_id", "is", null)
+                .neq("sync_status", "canceled_synced");
+
+            if (linkUpdateError) {
+                message.textContent = "お知らせは取消にしましたが、個人Google連携状態の更新に失敗しました: " + linkUpdateError.message;
+                await loadAnnouncements();
                 return;
             }
 
             const beforeSummary = `no=${target.no}, title=${target.title || ""}, date=${target.notice_date || ""}, visibility=${target.visibility || ""}`;
             const calendarState = target.google_calendar_event_id ? "calendar_deleted" : "calendar_not_linked";
             await writeAuditLog(dbClient, {
-                actionType: "お知らせ削除",
+                actionType: "お知らせ取消",
                 targetEmail: currentUserEmail || "",
                 beforeValue: beforeSummary,
-                afterValue: "deleted",
+                afterValue: "canceled",
                 note: `announcement_no=${target.no}; ${calendarState}`
             });
 
-            message.textContent = "お知らせを削除しました。";
+            message.textContent = "お知らせを取消にしました。";
             await loadAnnouncements();
         }
 
@@ -1004,6 +1067,7 @@
             event.preventDefault();
 
             const noValue = Number(document.getElementById("edit_notice_no").value);
+            const current = announcementByNo.get(noValue) || {};
             const visibility = document.querySelector('input[name="edit_visibility"]:checked').value;
             let selectedMembers = [];
             const updateGoogleInvite = document.getElementById("edit_google_calendar_invite").checked;
@@ -1032,6 +1096,11 @@
                 visibility: visibility,
                 reminder_minutes_1: document.getElementById("edit_calendar_reminder_1").value,
                 reminder_minutes_2: document.getElementById("edit_calendar_reminder_2").value,
+                lifecycle_status: Number(current.version_no || 1) >= 1 ? "updated" : "active",
+                canceled_at: null,
+                canceled_by_email: null,
+                cancel_note: null,
+                version_no: Number(current.version_no || 1) + 1,
                 updated_at: new Date().toISOString()
             };
 
@@ -1058,6 +1127,8 @@
             if (!payload.attendance_required) {
                 payload.attendance_deadline = null;
             }
+
+            const saveTimestamp = payload.updated_at;
 
             const recipientEmails = getRecipientEmailsByVisibility(visibility, selectedMembers);
 
@@ -1121,6 +1192,21 @@
                 }
             }
 
+            const { error: linkStatusError } = await dbClient
+                .from("announcement_calendar_links")
+                .update({
+                    sync_status: "needs_update",
+                    updated_at: saveTimestamp
+                })
+                .eq("announcement_no", noValue)
+                .not("google_event_id", "is", null);
+
+            if (linkStatusError) {
+                editMessage.textContent = "更新は完了しましたが、個人Google連携状態の更新に失敗しました: " + linkStatusError.message;
+                await loadAnnouncements();
+                return;
+            }
+
             if (updateGoogleInvite) {
                 if (recipientEmails.length === 0) {
                     editMessage.textContent = "更新は完了しましたが、Google招待対象メールが0件のためカレンダー更新は行っていません。";
@@ -1128,7 +1214,6 @@
                     return;
                 }
 
-                const current = announcementByNo.get(noValue) || {};
                 const beforeEventId = current.google_calendar_event_id || "";
                 const actionMode = beforeEventId ? "resync" : "create";
                 const inviteResult = await syncGoogleCalendarInvite(
@@ -1226,11 +1311,13 @@
             attendanceStatsByNo.clear();
             recipientsCountByNo.clear();
             inviteTargetCountByNo.clear();
+            personalCalendarAlertsByNo.clear();
 
             const baseSelect = "notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility,attendance_required,attendance_deadline,google_calendar_event_id,google_calendar_event_link,google_calendar_synced_at";
+            const enhancedBaseSelect = `${baseSelect},lifecycle_status,version_no,canceled_at,canceled_by_email,cancel_note`;
             const { data, error } = await dbClient
                 .from("announcements")
-                .select(baseSelect)
+                .select(enhancedBaseSelect)
                 .order("notice_date", { ascending: false })
                 .order("start_time", { ascending: false })
                 .order("no", { ascending: false });
@@ -1299,6 +1386,28 @@
                         recipientsCountByNo.set(noValue, (recipientsCountByNo.get(noValue) || 0) + 1);
                         inviteTargetCountByNo.set(noValue, (inviteTargetCountByNo.get(noValue) || 0) + 1);
                     });
+
+                    const { data: personalLinks } = await dbClient
+                        .from("announcement_calendar_links")
+                        .select("announcement_no,member_email,sync_status,google_event_id")
+                        .in("announcement_no", announcementNos)
+                        .not("google_event_id", "is", null)
+                        .in("sync_status", ["needs_update", "canceled_pending"]);
+
+                    (personalLinks || []).forEach((item) => {
+                        const noValue = Number(item.announcement_no);
+                        if (!personalCalendarAlertsByNo.has(noValue)) {
+                            personalCalendarAlertsByNo.set(noValue, { needsUpdate: [], canceledPending: [] });
+                        }
+                        const bucket = personalCalendarAlertsByNo.get(noValue);
+                        const displayName = getMemberDisplayNameByEmail(item.member_email);
+                        if (item.sync_status === "needs_update") {
+                            bucket.needsUpdate.push(displayName);
+                        }
+                        if (item.sync_status === "canceled_pending") {
+                            bucket.canceledPending.push(displayName);
+                        }
+                    });
                 }
             }
 
@@ -1310,6 +1419,8 @@
                 const myResponse = myAttendanceByNo.get(noValue);
                 const currentStatus = myResponse ? myResponse.status : "unanswered";
                 const required = Boolean(item.attendance_required);
+                const lifecycle = String(item.lifecycle_status || "active");
+                const isCanceled = lifecycle === "canceled";
                 const deadlineText = required
                     ? `期限: ${formatDateTime(item.attendance_deadline)}`
                     : "出欠確認なし";
@@ -1333,6 +1444,14 @@
                         ${googleSyncActionHtml}
                     </div>`
                     : `<div class="space-y-1"><p><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">未連携</span></p><p class="text-xs text-gray-600">招待対象: ${inviteTargetCount}名</p>${googleSyncActionHtml}</div>`;
+                const personalSyncAlertHtml = canEdit
+                    ? buildPersonalSyncAlertHtml(personalCalendarAlertsByNo.get(noValue))
+                    : "";
+                const lifecycleBadgeHtml = isCanceled
+                    ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-700">取消済み</span>`
+                    : lifecycle === "updated"
+                        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">更新あり</span>`
+                        : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">有効</span>`;
                 let adminSummaryText = "";
                 if (required && currentRole === "admin") {
                     const stats = attendanceStatsByNo.get(noValue) || { attend: 0, absent: 0, pending: 0 };
@@ -1346,12 +1465,14 @@
                 tr.innerHTML = `
                     <td class="p-2 border">${formatDate(item.notice_date)}</td>
                     <td class="p-2 border">${formatTimeRange(item.start_time, item.end_time)}</td>
-                    <td class="p-2 border">${escapeHtml(item.title || "")}</td>
-                    <td class="p-2 border">${escapeHtml(item.content || "")}</td>
+                    <td class="p-2 border">${isCanceled ? `<span class="line-through text-gray-500">${escapeHtml(item.title || "")}</span>` : escapeHtml(item.title || "")}<div class="mt-1">${lifecycleBadgeHtml}</div></td>
+                    <td class="p-2 border">${isCanceled ? `<span class="line-through text-gray-500">${escapeHtml(item.content || "")}</span>` : escapeHtml(item.content || "")}</td>
                     <td class="p-2 border">${escapeHtml(item.owner_name || "未設定")}</td>
-                    <td class="p-2 border">${googleStatusHtml}</td>
+                    <td class="p-2 border">${googleStatusHtml}${personalSyncAlertHtml}</td>
                     <td class="p-2 border">
-                        ${required
+                        ${isCanceled
+                            ? `<span class="text-xs text-gray-500">取消済みのため回答不可</span>`
+                            : required
                             ? `<div class="space-y-2">
                                 <p class="text-xs text-gray-600">${escapeHtml(deadlineText)}</p>
                                 <p><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${attendanceStatusBadgeClass(currentStatus)}">${attendanceStatusLabel(currentStatus)}</span></p>
@@ -1369,7 +1490,7 @@
                         ${canEdit
                             ? `<div class="flex items-center gap-2">
                                 <button class="text-rose-700 hover:text-rose-900 font-semibold" data-edit-no="${item.no}">修正</button>
-                                <button class="text-gray-700 hover:text-gray-900 font-semibold" data-delete-no="${item.no}">削除</button>
+                                <button class="text-gray-700 hover:text-gray-900 font-semibold" data-delete-no="${item.no}">取消</button>
                             </div>`
                             : `<span class="text-gray-400">-</span>`}
                     </td>
