@@ -138,32 +138,36 @@
     <div id="member-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl mx-4 p-6">
             <h2 class="text-lg font-bold text-gray-800 mb-4">メンバー詳細</h2>
-            <dl class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <div>
+            <div class="mb-4 flex items-center gap-3">
+                <img id="detail_photo" alt="顔写真" class="hidden h-16 w-16 rounded-full border border-gray-200 object-cover">
+                <p id="detail_photo_empty" class="text-xs text-gray-500">顔写真は未設定です。</p>
+            </div>
+            <dl class="text-sm space-y-3">
+                <div class="w-full">
                     <dt class="text-gray-500">氏名</dt>
                     <dd id="detail_full_name" class="font-semibold text-gray-800">-</dd>
                 </div>
-                <div>
+                <div class="w-full">
                     <dt class="text-gray-500">ふりがな</dt>
                     <dd id="detail_furigana" class="font-semibold text-gray-800">-</dd>
                 </div>
-                <div>
+                <div class="w-full">
                     <dt class="text-gray-500">郵便番号</dt>
                     <dd id="detail_postal_code" class="font-semibold text-gray-800">-</dd>
                 </div>
-                <div class="md:col-span-2">
+                <div class="w-full">
                     <dt class="text-gray-500">住所</dt>
                     <dd id="detail_address" class="font-semibold text-gray-800">-</dd>
                 </div>
-                <div>
+                <div class="w-full">
                     <dt class="text-gray-500">電話</dt>
                     <dd id="detail_phone" class="font-semibold text-gray-800">-</dd>
                 </div>
-                <div>
+                <div class="w-full">
                     <dt class="text-gray-500">携帯番号</dt>
                     <dd id="detail_mobile" class="font-semibold text-gray-800">-</dd>
                 </div>
-                <div class="md:col-span-2">
+                <div class="w-full">
                     <dt class="text-gray-500">gmail</dt>
                     <dd id="detail_email" class="font-semibold text-gray-800">-</dd>
                 </div>
@@ -634,6 +638,18 @@
 
         function openMemberDetailModal(item) {
             detailMemberId = item.member_id || "";
+            const detailPhoto = document.getElementById("detail_photo");
+            const detailPhotoEmpty = document.getElementById("detail_photo_empty");
+            const photoUrl = getPhotoPublicUrl(item.photo_path || "");
+            if (photoUrl) {
+                detailPhoto.src = photoUrl;
+                detailPhoto.classList.remove("hidden");
+                detailPhotoEmpty.classList.add("hidden");
+            } else {
+                detailPhoto.removeAttribute("src");
+                detailPhoto.classList.add("hidden");
+                detailPhotoEmpty.classList.remove("hidden");
+            }
             document.getElementById("detail_full_name").textContent = item.full_name || "-";
             document.getElementById("detail_furigana").textContent = item.furigana || "-";
             document.getElementById("detail_postal_code").textContent = item.postal_code || "-";
