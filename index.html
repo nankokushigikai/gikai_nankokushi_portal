@@ -35,6 +35,7 @@
                     <div class="flex items-center gap-2">
                         <div class="text-rose-500 text-xl"><i class="fas fa-bullhorn"></i></div>
                         <h3 class="text-base font-bold text-gray-800">お知らせ</h3>
+                        <button id="announcement-count-link" type="button" class="text-xs font-semibold text-rose-600 hover:text-rose-700 underline underline-offset-2">0件</button>
                     </div>
                     <a href="announcements.html" class="inline-block text-xs font-semibold text-rose-600 hover:text-rose-700">一覧を確認</a>
                 </div>
@@ -133,6 +134,42 @@
         </div>
     </main>
 
+    <div id="announcement-list-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-800">お知らせ一覧</h2>
+                    <p id="announcement-list-modal-summary" class="mt-1 text-sm text-gray-600"></p>
+                    <div class="mt-3">
+                        <label for="announcement-title-search" class="block text-xs font-semibold text-gray-600">タイトル検索</label>
+                        <input id="announcement-title-search" type="search" placeholder="タイトルで絞り込み" class="mt-1 w-full sm:w-80 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="announcement-history-toggle" type="button" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 rounded-lg text-sm font-semibold">過去のデータを表示</button>
+                    <button id="announcement-list-modal-close" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="text-left p-2 border">日付</th>
+                            <th class="text-left p-2 border">時間</th>
+                            <th class="text-left p-2 border">タイトル</th>
+                            <th class="text-left p-2 border">内容</th>
+                        </tr>
+                    </thead>
+                    <tbody id="announcement-list-modal-body">
+                        <tr>
+                            <td class="p-2 border text-gray-500" colspan="4">読み込み中です...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
         &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
     </footer>
@@ -140,6 +177,11 @@
     <script src="auth-config.js"></script>
     <script src="auth.js"></script>
     <script>
+        let allAnnouncementRows = [];
+        let announcementModalShowPast = false;
+        let announcementModalSearchTerm = "";
+        let announcementModalContext = { client: null, userEmail: "", userRole: "viewer", responderName: "" };
+
         function formatAnnouncementDate(dateValue) {
             if (!dateValue) return "";
             const parts = String(dateValue).split("-");
@@ -149,6 +191,15 @@
 
         function normalizeEmail(value) {
             return String(value || "").trim().toLowerCase();
+        }
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\"/g, "&quot;")
+                .replace(/'/g, "&#39;");
         }
 
         async function getGoogleProviderToken(client) {
@@ -319,7 +370,9 @@
             const now = new Date();
             const [y, m, d] = getTodayDateString().split("-");
             const week = ["日", "月", "火", "水", "木", "金", "土"][now.getDay()];
-            target.textContent = `${y}/${m}/${d}(${week})`;
+            const hh = String(now.getHours()).padStart(2, "0");
+            const mm = String(now.getMinutes()).padStart(2, "0");
+            target.textContent = `${y}/${m}/${d}(${week}) ${hh}:${mm}`;
         }
 
         function getTodayDateString() {
@@ -328,6 +381,105 @@
             const m = String(now.getMonth() + 1).padStart(2, "0");
             const d = String(now.getDate()).padStart(2, "0");
             return `${y}-${m}-${d}`;
+        }
+
+        function getVisibleAnnouncementsForModal() {
+            const today = getTodayDateString();
+            const rows = Array.isArray(allAnnouncementRows) ? allAnnouncementRows.slice() : [];
+
+            if (announcementModalShowPast) {
+                return rows.sort((a, b) => {
+                    const dateCompare = String(b.notice_date || "").localeCompare(String(a.notice_date || ""));
+                    if (dateCompare !== 0) return dateCompare;
+                    const timeCompare = String(b.start_time || "").localeCompare(String(a.start_time || ""));
+                    if (timeCompare !== 0) return timeCompare;
+                    return Number(b.no || 0) - Number(a.no || 0);
+                });
+            }
+
+            return rows
+                .filter((item) => String(item.notice_date || "") >= today)
+                .sort((a, b) => {
+                    const dateCompare = String(a.notice_date || "").localeCompare(String(b.notice_date || ""));
+                    if (dateCompare !== 0) return dateCompare;
+                    const timeCompare = String(a.start_time || "").localeCompare(String(b.start_time || ""));
+                    if (timeCompare !== 0) return timeCompare;
+                    return Number(a.no || 0) - Number(b.no || 0);
+                });
+        }
+
+        function getFilteredAnnouncementsForModal() {
+            const rows = getVisibleAnnouncementsForModal();
+            const keyword = String(announcementModalSearchTerm || "").trim().toLowerCase();
+            if (!keyword) {
+                return rows;
+            }
+
+            return rows.filter((item) => String(item.title || "").toLowerCase().includes(keyword));
+        }
+
+        function updateAnnouncementCountLink() {
+            const link = document.getElementById("announcement-count-link");
+            if (!link) return;
+            const count = getVisibleAnnouncementsForModal().length;
+            link.textContent = `${count}件`;
+        }
+
+        function renderAnnouncementModal() {
+            const summary = document.getElementById("announcement-list-modal-summary");
+            const tbody = document.getElementById("announcement-list-modal-body");
+            const toggle = document.getElementById("announcement-history-toggle");
+            const searchInput = document.getElementById("announcement-title-search");
+            if (!summary || !tbody || !toggle || !searchInput) return;
+
+            const baseRows = getVisibleAnnouncementsForModal();
+            const rows = getFilteredAnnouncementsForModal();
+            const today = getTodayDateString();
+            const pastCount = (allAnnouncementRows || []).filter((item) => String(item.notice_date || "") < today).length;
+            toggle.textContent = announcementModalShowPast ? "過去のデータを隠す" : "過去のデータを表示";
+            searchInput.value = announcementModalSearchTerm;
+
+            if (announcementModalShowPast) {
+                summary.textContent = announcementModalSearchTerm
+                    ? `全 ${baseRows.length} 件中 ${rows.length} 件を表示中（過去データ ${pastCount} 件を含む）`
+                    : `全 ${rows.length} 件を表示中（過去データ ${pastCount} 件を含む）`;
+            } else {
+                summary.textContent = announcementModalSearchTerm
+                    ? `今日以降の ${baseRows.length} 件中 ${rows.length} 件を表示中`
+                    : `今日以降の ${rows.length} 件を表示中`;
+            }
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td class="p-2 border text-gray-500" colspan="4">表示できるお知らせはありません。</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = rows.map((item) => {
+                const lifecycle = String(item.lifecycle_status || "active");
+                const isCanceled = lifecycle === "canceled";
+                const titleHtml = isCanceled ? `<span class="line-through text-gray-500">${escapeHtml(item.title || "")}</span>` : escapeHtml(item.title || "");
+                const badges = [
+                    isCanceled ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-700">取消済み</span>' : '',
+                    item.attendance_required ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-700">出欠確認あり</span>' : ''
+                ].filter(Boolean).join(' ');
+                return `
+                    <tr>
+                        <td class="p-2 border">${formatAnnouncementDate(item.notice_date)}</td>
+                        <td class="p-2 border">${String(item.start_time || "").slice(0, 5)} - ${String(item.end_time || "").slice(0, 5)}</td>
+                        <td class="p-2 border">${titleHtml}${badges ? `<div class="mt-1 flex flex-wrap gap-1">${badges}</div>` : ''}</td>
+                        <td class="p-2 border">${isCanceled ? `<span class="line-through text-gray-500">${escapeHtml(item.content || "")}</span>` : escapeHtml(item.content || "")}</td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        function openAnnouncementListModal() {
+            renderAnnouncementModal();
+            document.getElementById("announcement-list-modal").classList.remove("hidden");
+        }
+
+        function closeAnnouncementListModal() {
+            document.getElementById("announcement-list-modal").classList.add("hidden");
         }
 
         function renderAnnouncements(items, responseByNo = new Map(), onRespond = null, onCalendarLink = null) {
@@ -351,10 +503,10 @@
                 li.className = "text-gray-700 bg-gray-50 rounded-lg p-2";
 
                 const topRow = document.createElement("div");
-                topRow.className = "flex items-start gap-2";
+                topRow.className = "flex items-center gap-2 min-w-0";
 
                 const dot = document.createElement("span");
-                dot.className = `mt-1 inline-block w-1.5 h-1.5 rounded-full ${dotColors[index % dotColors.length]}`;
+                dot.className = `inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[index % dotColors.length]}`;
 
                 const lifecycle = String(item.lifecycle_status || "active");
                 const isCanceled = lifecycle === "canceled";
@@ -363,52 +515,69 @@
                 const linkedVersion = Number(personalLink && personalLink.last_synced_version ? personalLink.last_synced_version : 0);
                 const needsUpdate = !!(personalLink && linkedVersion > 0 && linkedVersion < currentVersion && !isCanceled);
                 const needsCancelDelete = !!(isCanceled && personalLink && personalLink.google_event_id && personalLink.sync_status !== "canceled_synced");
+                const date = document.createElement("span");
+                date.className = "text-xs font-semibold text-gray-700 whitespace-nowrap flex-shrink-0";
+                date.textContent = formatAnnouncementDate(item.notice_date);
 
-                const text = document.createElement("span");
-                text.className = "flex-1";
-                text.textContent = buildAnnouncementLine(item);
-                if (isCanceled) {
-                    text.classList.add("line-through", "text-gray-500");
-                }
+                const time = document.createElement("span");
+                time.className = "text-xs font-semibold text-gray-700 whitespace-nowrap flex-shrink-0";
+                time.textContent = `${item.start_time ? String(item.start_time).slice(0, 5) : "--:--"}-${item.end_time ? String(item.end_time).slice(0, 5) : "--:--"}`;
 
-                topRow.appendChild(dot);
-                topRow.appendChild(text);
-                li.appendChild(topRow);
-
-                const calendarRow = document.createElement("div");
-                calendarRow.className = "mt-2";
                 const calendarBtn = document.createElement("button");
                 calendarBtn.type = "button";
-                calendarBtn.className = "text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200";
+                calendarBtn.className = "text-xs whitespace-nowrap text-indigo-700 hover:text-indigo-900 font-semibold flex-shrink-0";
                 if (needsCancelDelete) {
-                    calendarBtn.textContent = "取消済み予定を削除";
+                    calendarBtn.textContent = "📅削除";
                 } else if (needsUpdate) {
-                    calendarBtn.textContent = "Google予定を更新";
+                    calendarBtn.textContent = "📅更新";
                 } else if (personalLink && personalLink.google_event_link) {
-                    calendarBtn.textContent = "Google予定を開く";
+                    calendarBtn.textContent = "📅開く";
                 } else {
-                    calendarBtn.textContent = "Googleカレンダー連携";
+                    calendarBtn.textContent = "📅連携";
                 }
                 calendarBtn.disabled = typeof onCalendarLink !== "function";
                 calendarBtn.addEventListener("click", async () => {
                     if (typeof onCalendarLink !== "function") return;
                     await onCalendarLink(item);
                 });
-                calendarRow.appendChild(calendarBtn);
+
+                const text = document.createElement("span");
+                text.className = "flex-1 min-w-0 truncate text-gray-800";
+
+                const titleText = document.createElement("span");
+                titleText.className = "font-semibold";
+                titleText.textContent = item.title || "";
+                text.appendChild(titleText);
+
+                if (item.content) {
+                    const contentText = document.createElement("span");
+                    contentText.textContent = ` / ${item.content}`;
+                    text.appendChild(contentText);
+                }
+
+                if (isCanceled) {
+                    text.classList.add("line-through", "text-gray-500");
+                }
+
+                topRow.appendChild(dot);
+                topRow.appendChild(date);
+                topRow.appendChild(time);
+                topRow.appendChild(calendarBtn);
+                topRow.appendChild(text);
+                li.appendChild(topRow);
 
                 if (needsUpdate) {
                     const updateNote = document.createElement("p");
                     updateNote.className = "mt-1 text-xs font-semibold text-amber-700";
                     updateNote.textContent = "日程・内容が更新されています。Google予定も更新してください。";
-                    calendarRow.appendChild(updateNote);
+                    li.appendChild(updateNote);
                 }
                 if (needsCancelDelete) {
                     const cancelNote = document.createElement("p");
                     cancelNote.className = "mt-1 text-xs font-semibold text-gray-700";
                     cancelNote.textContent = "このお知らせは取消済みです。Google予定も削除してください。";
-                    calendarRow.appendChild(cancelNote);
+                    li.appendChild(cancelNote);
                 }
-                li.appendChild(calendarRow);
 
                 if (item.attendance_required && !isCanceled) {
                     const noValue = Number(item.no);
@@ -468,32 +637,36 @@
 
         async function loadAnnouncements(client, userEmail, userRole, responderName) {
             if (!client) {
+                allAnnouncementRows = [];
+                updateAnnouncementCountLink();
                 renderAnnouncements([]);
                 return;
             }
 
-            const today = getTodayDateString();
             const baseSelect = "no,notice_date,start_time,end_time,title,content,contact_phone,contact_email,remarks,visibility,attendance_required,attendance_deadline,lifecycle_status,version_no,canceled_at";
             const { data, error } = await client
                 .from("announcements")
                 .select(baseSelect)
-                .gte("notice_date", today)
                 .order("notice_date", { ascending: true })
                 .order("start_time", { ascending: true, nullsFirst: false })
-                .order("no", { ascending: true })
-                .limit(5);
+                .order("no", { ascending: true });
 
             if (error) {
                 console.error("お知らせ読み込みエラー:", error);
+                allAnnouncementRows = [];
+                updateAnnouncementCountLink();
                 renderAnnouncements([]);
                 setAnnouncementTileMessage("お知らせの読込に失敗しました。", true);
                 return;
             }
 
-            const rows = data || [];
+            allAnnouncementRows = data || [];
+            updateAnnouncementCountLink();
+            const rows = getVisibleAnnouncementsForModal();
             const normalizedUserEmail = normalizeEmail(userEmail);
             const responseByNo = new Map();
-            const announcementNos = rows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
+            const tileRows = rows.slice(0, 5);
+            const announcementNos = tileRows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
 
             const personalLinkByNo = new Map();
             if (announcementNos.length > 0 && normalizedUserEmail) {
@@ -508,7 +681,7 @@
                 });
             }
 
-            rows.forEach((item) => {
+            tileRows.forEach((item) => {
                 item.personal_link = personalLinkByNo.get(Number(item.no)) || null;
             });
 
@@ -528,7 +701,7 @@
                 });
             }
 
-            renderAnnouncements(rows, responseByNo, async (announcementNo, status) => {
+            renderAnnouncements(tileRows, responseByNo, async (announcementNo, status) => {
                 if (!userEmail) return;
 
                 const nowIso = new Date().toISOString();
@@ -654,8 +827,34 @@
                 const responderName = (context.session && context.session.displayName)
                     || (context.profile && context.profile.display_name)
                     || userEmail;
+                announcementModalContext = { client: context.client, userEmail, userRole: context.role || "viewer", responderName };
                 await loadAnnouncements(context.client, userEmail, context.role || "viewer", responderName);
             }
+        });
+
+        document.getElementById("announcement-count-link").addEventListener("click", () => {
+            openAnnouncementListModal();
+        });
+
+        document.getElementById("announcement-list-modal-close").addEventListener("click", () => {
+            closeAnnouncementListModal();
+        });
+
+        document.getElementById("announcement-list-modal").addEventListener("click", (event) => {
+            if (event.target && event.target.id === "announcement-list-modal") {
+                closeAnnouncementListModal();
+            }
+        });
+
+        document.getElementById("announcement-history-toggle").addEventListener("click", () => {
+            announcementModalShowPast = !announcementModalShowPast;
+            renderAnnouncementModal();
+            updateAnnouncementCountLink();
+        });
+
+        document.getElementById("announcement-title-search").addEventListener("input", (event) => {
+            announcementModalSearchTerm = String(event.target.value || "");
+            renderAnnouncementModal();
         });
 
         // 政務活動費入力リンクは auth-config.js の本番URL設定を優先。
