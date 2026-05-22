@@ -217,7 +217,6 @@
         let currentOwnerName = "未設定";
         const announcementByNo = new Map();
         const myAttendanceByNo = new Map();
-        const googleAttendanceByNo = new Map();
         const attendanceStatsByNo = new Map();
         const recipientsCountByNo = new Map();
         const inviteTargetCountByNo = new Map();
@@ -421,6 +420,55 @@
             const second = parseReminderMinutes(payload.reminder_minutes_2, 30);
             const unique = Array.from(new Set([first, second]));
             return unique.map((minutes) => ({ method: "popup", minutes }));
+        }
+
+        async function createPersonalCalendarEvent(client, item, reminder1, reminder2) {
+            const providerToken = await getGoogleProviderToken(client);
+            if (!providerToken) {
+                return { ok: false, reason: "Google再ログイン後に再実行してください（Calendar権限不足の可能性があります）。" };
+            }
+
+            const descriptionLines = [
+                item.content || "",
+                item.contact_phone ? `連絡先電話: ${item.contact_phone}` : "",
+                item.contact_email ? `連絡先メール: ${item.contact_email}` : "",
+                item.remarks ? `備考: ${item.remarks}` : "",
+                item.attendance_required ? "出欠確認あり（回答はポータルで行ってください）" : ""
+            ].filter(Boolean);
+
+            const eventPayload = {
+                summary: item.title || "お知らせ",
+                description: descriptionLines.join("\n"),
+                start: {
+                    dateTime: buildCalendarDateTime(item.notice_date, item.start_time),
+                    timeZone: "Asia/Tokyo"
+                },
+                end: {
+                    dateTime: buildCalendarDateTime(item.notice_date, item.end_time),
+                    timeZone: "Asia/Tokyo"
+                },
+                reminders: {
+                    useDefault: false,
+                    overrides: buildReminderOverrides({ reminder_minutes_1: reminder1, reminder_minutes_2: reminder2 })
+                }
+            };
+
+            const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${providerToken}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(eventPayload)
+            });
+
+            if (!response.ok) {
+                const detail = await response.text();
+                return { ok: false, reason: buildFriendlyGoogleError(detail) };
+            }
+
+            const eventData = await response.json();
+            return { ok: true, htmlLink: eventData.htmlLink || "" };
         }
 
         async function syncGoogleCalendarInvite(client, payload, recipientEmails, existingEventId) {
@@ -1175,7 +1223,6 @@
             message.textContent = "";
             announcementByNo.clear();
             myAttendanceByNo.clear();
-            googleAttendanceByNo.clear();
             attendanceStatsByNo.clear();
             recipientsCountByNo.clear();
             inviteTargetCountByNo.clear();
@@ -1225,48 +1272,6 @@
                     myAttendanceByNo.set(Number(item.announcement_no), item);
                 });
 
-                const googleLinkedRows = rows.filter((item) => {
-                    return Boolean(item.attendance_required) && Boolean(item.google_calendar_event_id);
-                });
-
-                for (const item of googleLinkedRows) {
-                    const noValue = Number(item.no);
-                    const googleStatus = await fetchGoogleAttendanceStatus(dbClient, item.google_calendar_event_id, currentUserEmail);
-                    if (!googleStatus) {
-                        continue;
-                    }
-
-                    googleAttendanceByNo.set(noValue, googleStatus);
-
-                    if (googleStatus === "unanswered") {
-                        continue;
-                    }
-
-                    const current = myAttendanceByNo.get(noValue);
-                    const currentStatus = current ? current.status : "unanswered";
-                    if (currentStatus === googleStatus) {
-                        continue;
-                    }
-
-                    const nowIso = new Date().toISOString();
-                    const payload = {
-                        announcement_no: noValue,
-                        responder_email: currentUserEmail,
-                        responder_name: currentOwnerName || currentUserEmail,
-                        status: googleStatus,
-                        responded_at: nowIso,
-                        updated_at: nowIso
-                    };
-
-                    const { error: upsertError } = await dbClient
-                        .from("announcement_attendance_responses")
-                        .upsert(payload, { onConflict: "announcement_no,responder_email" });
-
-                    if (!upsertError) {
-                        myAttendanceByNo.set(noValue, { announcement_no: noValue, status: googleStatus, responded_at: nowIso });
-                    }
-                }
-
                 if (currentRole === "admin") {
                     const { data: allResponses } = await dbClient
                         .from("announcement_attendance_responses")
@@ -1303,10 +1308,8 @@
                 const canEdit = currentRole === "admin";
                 const noValue = Number(item.no);
                 const myResponse = myAttendanceByNo.get(noValue);
-                const googleSyncedStatus = googleAttendanceByNo.get(noValue);
-                const currentStatus = googleSyncedStatus || (myResponse ? myResponse.status : "unanswered");
+                const currentStatus = myResponse ? myResponse.status : "unanswered";
                 const required = Boolean(item.attendance_required);
-                const useGoogleAttendance = required && Boolean(item.google_calendar_event_id);
                 const deadlineText = required
                     ? `期限: ${formatDateTime(item.attendance_deadline)}`
                     : "出欠確認なし";
@@ -1353,13 +1356,12 @@
                                 <p class="text-xs text-gray-600">${escapeHtml(deadlineText)}</p>
                                 <p><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${attendanceStatusBadgeClass(currentStatus)}">${attendanceStatusLabel(currentStatus)}</span></p>
                                 ${adminSummaryText ? `<p class="text-xs text-gray-600">${escapeHtml(adminSummaryText)}</p>` : ""}
-                                ${useGoogleAttendance
-                                    ? `<p class="text-xs text-indigo-700">Googleカレンダーの回答と同期しています（回答はGoogle側で実施）。</p>`
-                                    : `<div class="flex flex-wrap gap-1">
-                                        <button class="attendance-btn text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200" data-attendance-no="${item.no}" data-attendance-status="attend">出席</button>
-                                        <button class="attendance-btn text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200" data-attendance-no="${item.no}" data-attendance-status="absent">欠席</button>
-                                        <button class="attendance-btn text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200" data-attendance-no="${item.no}" data-attendance-status="pending">未定</button>
-                                    </div>`}
+                                <div class="flex flex-wrap gap-1">
+                                    <button class="attendance-btn text-xs px-2 py-1 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200" data-attendance-no="${item.no}" data-attendance-status="attend">出席</button>
+                                    <button class="attendance-btn text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200" data-attendance-no="${item.no}" data-attendance-status="absent">欠席</button>
+                                    <button class="attendance-btn text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200" data-attendance-no="${item.no}" data-attendance-status="pending">未定</button>
+                                </div>
+                                <button class="personal-calendar-btn text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200" data-personal-calendar-no="${item.no}">Googleカレンダー連携</button>
                             </div>`
                             : `<span class="text-gray-400">-</span>`}
                     </td>
@@ -1432,6 +1434,38 @@
 
                     message.textContent = `出欠回答を保存しました（${attendanceStatusLabel(status)}）。`;
                     await loadAnnouncements();
+                });
+            });
+
+            tbody.querySelectorAll("button.personal-calendar-btn").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const noValue = Number(btn.getAttribute("data-personal-calendar-no"));
+                    if (!noValue) return;
+
+                    const target = announcementByNo.get(noValue);
+                    if (!target) return;
+
+                    const confirmed = window.confirm("このお知らせを自分のGoogleカレンダーへ登録しますか？");
+                    if (!confirmed) return;
+
+                    const reminder1 = window.prompt("通知1（分前）を入力してください", "60");
+                    if (reminder1 === null) return;
+                    const reminder2 = window.prompt("通知2（分前）を入力してください", "30");
+                    if (reminder2 === null) return;
+
+                    const result = await createPersonalCalendarEvent(dbClient, target, reminder1, reminder2);
+                    if (!result.ok) {
+                        message.textContent = `Googleカレンダー連携に失敗しました: ${result.reason}`;
+                        return;
+                    }
+
+                    message.textContent = "Googleカレンダーへ登録しました。";
+                    if (result.htmlLink) {
+                        const openCalendar = window.confirm("作成したGoogleカレンダー予定を開きますか？");
+                        if (openCalendar) {
+                            window.open(result.htmlLink, "_blank", "noopener");
+                        }
+                    }
                 });
             });
         }
