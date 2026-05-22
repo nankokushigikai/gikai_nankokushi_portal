@@ -332,7 +332,17 @@
             return normalized === null ? Number.MAX_SAFE_INTEGER : normalized;
         }
 
+        function categorySortValue(item) {
+            const category = String((item && item.category) || "").trim();
+            if (category === "議員") return 1;
+            if (category === "職員") return 2;
+            return 3;
+        }
+
         function compareMembersBySeat(a, b) {
+            const categoryDiff = categorySortValue(a) - categorySortValue(b);
+            if (categoryDiff !== 0) return categoryDiff;
+
             const seatDiff = seatSortValue(a) - seatSortValue(b);
             if (seatDiff !== 0) return seatDiff;
             const furiganaDiff = String(a.furigana || "").localeCompare(String(b.furigana || ""), "ja");
@@ -832,10 +842,7 @@
             const { data, error } = await dbClient
                 .from("member_directory")
                 .select("member_id,full_name,photo_path,furigana,seat_number,is_current,access_role,category,position_name,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role")
-                .order("category", { ascending: true })
-                .order("seat_number", { ascending: true, nullsFirst: false })
-                .order("furigana", { ascending: true, nullsFirst: false })
-                .order("full_name", { ascending: true });
+                .order("member_id", { ascending: true });
 
             const tbody = document.getElementById("member-list");
             tbody.innerHTML = "";
@@ -846,9 +853,10 @@
                 return;
             }
 
-            renderMemberSummaries(data || []);
+            const sortedRows = (data || []).slice().sort(compareMembersBySeat);
+            renderMemberSummaries(sortedRows);
 
-            (data || []).forEach((item) => {
+            sortedRows.forEach((item) => {
                 const tr = document.createElement("tr");
                 const photoUrl = getPhotoPublicUrl(item.photo_path || "");
                 const photoCell = photoUrl
