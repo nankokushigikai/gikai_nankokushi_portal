@@ -156,6 +156,20 @@
                     </label>
                 </div>
                 <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">Google通知設定（分）</label>
+                    <div class="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-500">通知1（既定: 60分前）</label>
+                            <input id="edit_calendar_reminder_1" type="number" min="0" step="1" value="60" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500">通知2（既定: 30分前）</label>
+                            <input id="edit_calendar_reminder_2" type="number" min="0" step="1" value="30" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Google招待を更新する場合に使います。空欄や不正値は 60分前 / 30分前 になります。</p>
+                </div>
+                <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700">配信対象</label>
                     <div class="mt-2 space-y-2">
                         <label class="flex items-center gap-2">
@@ -394,6 +408,21 @@
             );
         }
 
+        function parseReminderMinutes(value, fallbackMinutes) {
+            const num = Number(value);
+            if (!Number.isFinite(num) || num < 0) {
+                return fallbackMinutes;
+            }
+            return Math.floor(num);
+        }
+
+        function buildReminderOverrides(payload) {
+            const first = parseReminderMinutes(payload.reminder_minutes_1, 60);
+            const second = parseReminderMinutes(payload.reminder_minutes_2, 30);
+            const unique = Array.from(new Set([first, second]));
+            return unique.map((minutes) => ({ method: "popup", minutes }));
+        }
+
         async function syncGoogleCalendarInvite(client, payload, recipientEmails, existingEventId) {
             const providerToken = await getGoogleProviderToken(client);
             if (!providerToken) {
@@ -419,7 +448,11 @@
                     dateTime: buildCalendarDateTime(payload.notice_date, payload.end_time),
                     timeZone: "Asia/Tokyo"
                 },
-                attendees: recipientEmails.map((email) => ({ email }))
+                attendees: recipientEmails.map((email) => ({ email })),
+                reminders: {
+                    useDefault: false,
+                    overrides: buildReminderOverrides(payload)
+                }
             };
 
             const endpoint = existingEventId
@@ -569,7 +602,9 @@
                 contact_phone: item.contact_phone || null,
                 contact_email: item.contact_email || null,
                 remarks: item.remarks || null,
-                attendance_required: Boolean(item.attendance_required)
+                attendance_required: Boolean(item.attendance_required),
+                reminder_minutes_1: 60,
+                reminder_minutes_2: 30
             };
         }
 
@@ -895,6 +930,8 @@
                 : "";
             document.getElementById("edit_attendance_deadline").disabled = !item.attendance_required;
             document.getElementById("edit_google_calendar_invite").checked = false;
+            document.getElementById("edit_calendar_reminder_1").value = "60";
+            document.getElementById("edit_calendar_reminder_2").value = "30";
             
             // 配信対象を設定
             const visibility = item.visibility || 'all';
@@ -945,6 +982,8 @@
                 attendance_required: document.getElementById("edit_attendance_required").checked,
                 attendance_deadline: null,
                 visibility: visibility,
+                reminder_minutes_1: document.getElementById("edit_calendar_reminder_1").value,
+                reminder_minutes_2: document.getElementById("edit_calendar_reminder_2").value,
                 updated_at: new Date().toISOString()
             };
 

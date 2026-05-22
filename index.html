@@ -299,7 +299,7 @@
             }
 
             const today = getTodayDateString();
-            const baseSelect = "no,notice_date,start_time,end_time,title,content,visibility,attendance_required,attendance_deadline";
+            const baseSelect = "no,notice_date,start_time,end_time,title,content,visibility,attendance_required,attendance_deadline,google_calendar_event_link";
             const { data, error } = await client
                 .from("announcements")
                 .select(baseSelect)
@@ -317,6 +317,10 @@
             }
 
             const rows = data || [];
+            const rowByNo = new Map();
+            rows.forEach((item) => {
+                rowByNo.set(Number(item.no), item);
+            });
             const responseByNo = new Map();
             const announcementNos = rows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
 
@@ -359,6 +363,20 @@
                 }
 
                 setAnnouncementTileMessage(`出欠回答を保存しました（${attendanceStatusLabel(status)}）。`);
+
+                if (status === "attend") {
+                    const target = rowByNo.get(Number(announcementNo));
+                    const calendarLink = target && target.google_calendar_event_link ? String(target.google_calendar_event_link) : "";
+                    if (calendarLink) {
+                        const openCalendar = window.confirm("Googleカレンダーの予定を開きますか？\n通知は既定で1時間前と30分前です。必要に応じてGoogleカレンダー側で変更できます。");
+                        if (openCalendar) {
+                            window.open(calendarLink, "_blank", "noopener");
+                        }
+                    } else {
+                        setAnnouncementTileMessage("出席回答を保存しました。Googleカレンダー連携がないため予定は開けません。", false);
+                    }
+                }
+
                 await loadAnnouncements(client, userEmail, userRole, responderName);
             });
         }

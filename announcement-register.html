@@ -101,6 +101,20 @@
                     </label>
                     <p class="text-xs text-gray-500 mt-1">有効にすると、登録者のGoogleカレンダーで予定を作成し、配信対象へ招待を送信します。</p>
                 </div>
+                <div class="md:col-span-2">
+                    <label class="text-sm font-semibold text-gray-700">Google通知設定（分）</label>
+                    <div class="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-500">通知1（既定: 60分前）</label>
+                            <input id="calendar_reminder_1" type="number" min="0" step="1" value="60" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500">通知2（既定: 30分前）</label>
+                            <input id="calendar_reminder_2" type="number" min="0" step="1" value="30" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Google招待を送る場合に使います。空欄や不正値は 60分前 / 30分前 になります。</p>
+                </div>
                 <div id="specific-members-section" class="md:col-span-2 hidden">
                     <label class="text-sm font-semibold text-gray-700 block mb-2">グループ選択（複数可）</label>
                     <div id="member-group-list" class="border border-gray-300 rounded-lg p-3 bg-gray-50 mb-3">
@@ -177,6 +191,8 @@
             document.getElementById("attendance_deadline").value = "";
             document.getElementById("attendance_deadline").disabled = true;
             document.getElementById("google_calendar_invite").checked = false;
+            document.getElementById("calendar_reminder_1").value = "60";
+            document.getElementById("calendar_reminder_2").value = "30";
             document.getElementById("specific-members-section").classList.add("hidden");
             document.querySelectorAll("#member-group-list .member-group-checkbox").forEach((checkbox) => {
                 checkbox.checked = false;
@@ -290,6 +306,21 @@
             return `${dateValue}T${time}:00+09:00`;
         }
 
+        function parseReminderMinutes(value, fallbackMinutes) {
+            const num = Number(value);
+            if (!Number.isFinite(num) || num < 0) {
+                return fallbackMinutes;
+            }
+            return Math.floor(num);
+        }
+
+        function buildReminderOverrides(payload) {
+            const first = parseReminderMinutes(payload.reminder_minutes_1, 60);
+            const second = parseReminderMinutes(payload.reminder_minutes_2, 30);
+            const unique = Array.from(new Set([first, second]));
+            return unique.map((minutes) => ({ method: "popup", minutes }));
+        }
+
         function getRecipientEmails(visibility, selectedMembers) {
             if (visibility === "specific") {
                 return Array.from(new Set(selectedMembers.map((email) => normalizeEmail(email)).filter(Boolean)));
@@ -382,7 +413,11 @@
                     dateTime: buildCalendarDateTime(payload.notice_date, payload.end_time),
                     timeZone: "Asia/Tokyo"
                 },
-                attendees: recipientEmails.map((email) => ({ email }))
+                attendees: recipientEmails.map((email) => ({ email })),
+                reminders: {
+                    useDefault: false,
+                    overrides: buildReminderOverrides(payload)
+                }
             };
 
             const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all", {
@@ -479,6 +514,8 @@
                 attendance_required: document.getElementById("attendance_required").checked,
                 attendance_deadline: null,
                 visibility: visibility,
+                reminder_minutes_1: document.getElementById("calendar_reminder_1").value,
+                reminder_minutes_2: document.getElementById("calendar_reminder_2").value,
                 updated_at: new Date().toISOString()
             };
             const useGoogleInvite = document.getElementById("google_calendar_invite").checked;
