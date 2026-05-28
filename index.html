@@ -140,6 +140,22 @@
             </div>
 
         </div>
+
+    <!-- お知らせ詳細モーダル -->
+    <div id="announcement-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="announcement-detail-title" class="text-lg font-bold text-gray-800">お知らせ詳細</h2>
+                <button id="announcement-detail-close" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+            </div>
+            <div class="mb-2 text-sm text-gray-600">
+                <span id="announcement-detail-date"></span>
+                <span id="announcement-detail-time" class="ml-4"></span>
+            </div>
+            <div id="announcement-detail-content" class="text-gray-800 mb-4"></div>
+            <div id="announcement-detail-remarks" class="text-xs text-gray-500"></div>
+        </div>
+    </div>
     </main>
 
     <div id="announcement-list-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
@@ -508,7 +524,14 @@
             const dotColors = ["bg-rose-500", "bg-amber-500", "bg-sky-500"];
             items.forEach((item, index) => {
                 const li = document.createElement("li");
-                li.className = "text-gray-700 bg-gray-50 rounded-lg p-2";
+                li.className = "text-gray-700 bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-rose-50 transition";
+
+                // 詳細モーダル表示イベント
+                li.addEventListener("click", (e) => {
+                    // カレンダー連携や出欠ボタンのクリックは除外
+                    if (e.target.closest("button")) return;
+                    showAnnouncementDetailModal(item);
+                });
 
                 const topRow = document.createElement("div");
                 topRow.className = "flex items-center gap-2 min-w-0";
@@ -544,7 +567,8 @@
                     calendarBtn.textContent = "📅連携";
                 }
                 calendarBtn.disabled = typeof onCalendarLink !== "function";
-                calendarBtn.addEventListener("click", async () => {
+                calendarBtn.addEventListener("click", async (ev) => {
+                    ev.stopPropagation();
                     if (typeof onCalendarLink !== "function") return;
                     await onCalendarLink(item);
                 });
@@ -592,7 +616,7 @@
                     const myStatus = responseByNo.get(noValue) || "unanswered";
 
                     if (myStatus === "unanswered") {
-                        li.className = "text-gray-700 bg-rose-50 border border-rose-200 rounded-lg p-2";
+                        li.className = "text-gray-700 bg-rose-50 border border-rose-200 rounded-lg p-2 cursor-pointer hover:bg-rose-100 transition";
                     }
 
                     const meta = document.createElement("p");
@@ -629,7 +653,8 @@
                         btn.className = `text-xs px-2 py-1 rounded ${option.cls}`;
                         btn.textContent = option.label;
                         btn.disabled = typeof onRespond !== "function";
-                        btn.addEventListener("click", async () => {
+                        btn.addEventListener("click", async (ev) => {
+                            ev.stopPropagation();
                             if (typeof onRespond !== "function") return;
                             await onRespond(noValue, option.status);
                         });
@@ -642,6 +667,29 @@
                 list.appendChild(li);
             });
         }
+        // お知らせ詳細モーダル表示関数
+        function showAnnouncementDetailModal(item) {
+            document.getElementById("announcement-detail-title").textContent = item.title || "お知らせ詳細";
+            document.getElementById("announcement-detail-date").textContent = `日付: ${formatAnnouncementDate(item.notice_date)}`;
+            document.getElementById("announcement-detail-time").textContent = `時間: ${(item.start_time ? String(item.start_time).slice(0,5) : "--:--") + " - " + (item.end_time ? String(item.end_time).slice(0,5) : "--:--")}`;
+            document.getElementById("announcement-detail-content").textContent = item.content || "";
+            let remarks = [];
+            if (item.contact_phone) remarks.push(`連絡先電話: ${escapeHtml(item.contact_phone)}`);
+            if (item.contact_email) remarks.push(`連絡先メール: ${escapeHtml(item.contact_email)}`);
+            if (item.remarks) remarks.push(`備考: ${escapeHtml(item.remarks)}`);
+            document.getElementById("announcement-detail-remarks").innerHTML = remarks.length ? remarks.join("<br>") : "";
+            document.getElementById("announcement-detail-modal").classList.remove("hidden");
+        }
+
+        document.getElementById("announcement-detail-close").addEventListener("click", () => {
+            document.getElementById("announcement-detail-modal").classList.add("hidden");
+        });
+
+        document.getElementById("announcement-detail-modal").addEventListener("click", (event) => {
+            if (event.target && event.target.id === "announcement-detail-modal") {
+                document.getElementById("announcement-detail-modal").classList.add("hidden");
+            }
+        });
 
         async function loadAnnouncements(client, userEmail, userRole, responderName) {
             if (!client) {
