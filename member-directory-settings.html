@@ -42,8 +42,11 @@
             <p class="text-sm text-indigo-900">この画面で登録した現職のデータは、ログイン画面の利用者一覧に表示されます。Gemini APIキーもこの画面で利用者ごとに設定できます。</p>
         </section>
 
-        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-indigo-500 mb-6">
-            <h2 class="text-xl font-bold mb-4 text-gray-700">登録フォーム</h2>
+        <section id="member-editor-section" class="hidden bg-white rounded-xl shadow-sm p-6 border-t-4 border-indigo-500 mb-6">
+            <div class="flex items-center justify-between gap-3 mb-4">
+                <h2 class="text-xl font-bold text-gray-700">登録・編集</h2>
+                <button type="button" id="close-member-editor" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+            </div>
             <form id="member-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input id="member_id" type="hidden">
                 <div class="md:col-span-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 flex items-center gap-3">
@@ -202,7 +205,10 @@
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-slate-500">
-            <h2 class="text-xl font-bold mb-4 text-gray-700">登録一覧</h2>
+            <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h2 class="text-xl font-bold text-gray-700">登録一覧</h2>
+                <button type="button" id="open-member-editor" class="bg-indigo-700 hover:bg-indigo-800 text-white px-5 py-2 rounded-lg text-sm font-semibold">新規登録</button>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-100">
@@ -859,6 +865,19 @@
             resetPhotoState();
         }
 
+        function openMemberEditor() {
+            const section = document.getElementById("member-editor-section");
+            if (!section) return;
+            section.classList.remove("hidden");
+            section.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        function closeMemberEditor() {
+            const section = document.getElementById("member-editor-section");
+            if (!section) return;
+            section.classList.add("hidden");
+        }
+
         async function setFormValues(item) {
             document.getElementById("member_id").value = item.member_id || "";
             document.getElementById("is_current").checked = item.is_current !== false;
@@ -957,8 +976,8 @@
                     }
 
                     await setFormValues(detail);
+                    openMemberEditor();
                     document.getElementById("form-message").textContent = "編集モードで読み込みました。";
-                    window.scrollTo({ top: 0, behavior: "smooth" });
                 });
             });
 
@@ -1165,6 +1184,7 @@
             document.getElementById("form-message").textContent = `保存しました。${mailResultText}`;
             showFlowMessage("登録内容を保存しました。", "success");
             clearForm();
+            closeMemberEditor();
             await loadMembers();
         }
 
@@ -1195,6 +1215,14 @@
 
         document.getElementById("member-form").addEventListener("submit", saveMember);
         document.getElementById("clear-form").addEventListener("click", clearForm);
+        document.getElementById("open-member-editor").addEventListener("click", () => {
+            clearForm();
+            document.getElementById("form-message").textContent = "新規登録モードです。";
+            openMemberEditor();
+        });
+        document.getElementById("close-member-editor").addEventListener("click", () => {
+            closeMemberEditor();
+        });
         document.getElementById("send-profile-mail").addEventListener("click", async () => {
             const fullName = document.getElementById("full_name").value.trim();
             const email = normalizeEmail(document.getElementById("email").value);
