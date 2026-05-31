@@ -10,6 +10,10 @@ window.AUTH_CONFIG = {
     // 例: "https://example.com/webhooks/profile-notify"
     // 未設定時は mailto でメール作成画面を開きます。
     profileNotifyWebhookUrl: "https://gnnfzimhfizbfhvwuzbf.functions.supabase.co/profile-notify-mail",
+    // メールでお知らせ送信用Webhook（任意）。
+    // 例: "https://<project-ref>.functions.supabase.co/mail-notice-send"
+    // 未設定時は mailto でメール作成画面を開きます。
+    mailNoticeWebhookUrl: "https://gnnfzimhfizbfhvwuzbf.functions.supabase.co/mail-notice-send",
     // 政務活動費アプリの本番公開URL（末尾スラッシュ不要）。
     // 例: "https://seimu.example.com"
     seimukatudouhiAppBaseUrl: "",

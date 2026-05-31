@@ -140,3 +140,32 @@ profileNotifyWebhookUrl: "https://<project-ref>.functions.supabase.co/profile-no
 - ログインURL
 - 登録または変更のメッセージ
 
+## 10. メールでお知らせ（自動送信）設定
+
+`mail-notice-settings.html` の「保存+送信」は、
+`auth-config.js` の `mailNoticeWebhookUrl` が設定されている場合に
+Supabase Edge Function 経由で Gmail API 送信します。
+未設定時は `mailto:` でメール作成画面を開きます。
+
+### 10-1. Edge Function をデプロイ
+
+```bash
+supabase functions deploy mail-notice-send
+```
+
+### 10-2. フロント側Webhook URL設定
+`auth-config.js` の `mailNoticeWebhookUrl` に以下を設定します。
+
+```js
+mailNoticeWebhookUrl: "https://<project-ref>.functions.supabase.co/mail-notice-send"
+```
+
+### 10-3. 動作確認
+1. `mail-notice-settings.html` で件名・本文・送信先を入力
+2. 「保存+送信」を実行
+3. 送信成功メッセージ（Gmail API で送信）を確認
+
+補足:
+- Gmail API の環境変数（`GMAIL_CLIENT_ID` など）は 9章と共通です。
+- Webhook送信に失敗した場合は、画面側で自動的に `mailto:` にフォールバックします。
+

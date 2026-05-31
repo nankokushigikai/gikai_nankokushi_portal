@@ -553,6 +553,60 @@
             window.location.href = `mailto:?bcc=${encodeURIComponent(bcc)}&subject=${subject}&body=${body}`;
         }
 
+        async function sendNoticeByWebhook(record) {
+            const webhookUrl = (window.AUTH_CONFIG && window.AUTH_CONFIG.mailNoticeWebhookUrl)
+                ? String(window.AUTH_CONFIG.mailNoticeWebhookUrl).trim()
+                : "";
+
+            if (!webhookUrl) {
+                return { via: "mailto", reason: "webhook_not_configured" };
+            }
+
+            const recipients = buildRecipientList(record.targetType, record.specificMemberIds);
+            if (!recipients.length) {
+                throw new Error("送信先メールアドレスが見つかりません。メンバー情報を確認してください。");
+            }
+
+            const headers = {
+                "Content-Type": "application/json"
+            };
+
+            if (dbClient && dbClient.auth) {
+                const { data: sessionData } = await dbClient.auth.getSession();
+                const accessToken = sessionData && sessionData.session ? sessionData.session.access_token : "";
+                const anonKey = window.AUTH_CONFIG && window.AUTH_CONFIG.supabaseAnonKey
+                    ? String(window.AUTH_CONFIG.supabaseAnonKey).trim()
+                    : "";
+                if (accessToken) {
+                    headers.Authorization = `Bearer ${accessToken}`;
+                }
+                if (anonKey) {
+                    headers.apikey = anonKey;
+                }
+            }
+
+            const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    toEmails: recipients,
+                    subject: record.subject || "お知らせ",
+                    body: buildMailBody(record),
+                    senderName: currentUserName || "南国市議会DXポータル",
+                    attachmentNames: Array.isArray(record.attachments)
+                        ? record.attachments.map((item) => item && item.name ? String(item.name) : "").filter(Boolean)
+                        : []
+                })
+            });
+
+            if (!response.ok) {
+                const bodyText = await response.text();
+                throw new Error(`Webhook送信失敗: ${response.status} ${bodyText}`);
+            }
+
+            return { via: "webhook" };
+        }
+
         function buildRecordPayload(status) {
             const id = document.getElementById("record_id").value.trim() || crypto.randomUUID();
             const subject = document.getElementById("notice_subject").value.trim();
@@ -703,8 +757,18 @@
                 renderRecordsTable();
 
                 if (status === "sent") {
-                    openMailClient(payload);
-                    showMessage("保存+送信を実行しました。メール作成画面を開きました。", "success");
+                    try {
+                        const sendResult = await sendNoticeByWebhook(payload);
+                        if (sendResult.via === "webhook") {
+                            showMessage("保存+送信を実行しました。Gmail API で送信しました。", "success");
+                        } else {
+                            openMailClient(payload);
+                            showMessage("保存+送信を実行しました。メール作成画面を開きました。", "success");
+                        }
+                    } catch (sendError) {
+                        openMailClient(payload);
+                        showMessage("Webhook送信に失敗したため、メール作成画面を開きました: " + sendError.message, "error");
+                    }
                 } else {
                     showMessage("保存しました。", "success");
                 }
