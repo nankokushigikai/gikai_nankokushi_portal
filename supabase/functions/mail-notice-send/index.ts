@@ -61,7 +61,7 @@ function buildRawMessage({
   const bcc = toEmails.join(",");
   const headers = [
     `From: ${encodeMimeWord(fromName)} <${fromEmail}>`,
-    "To: <undisclosed-recipients:;>",
+    `To: <${fromEmail}>`,
     `Bcc: ${bcc}`,
     `Subject: ${encodeMimeWord(subject)}`,
     "MIME-Version: 1.0",
