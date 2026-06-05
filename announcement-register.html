@@ -115,6 +115,18 @@
             </form>
             <p id="announcement-message" class="mt-3 text-sm text-gray-600"></p>
         </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-400 mt-6">
+            <div class="flex items-center justify-between gap-3 mb-4">
+                <h2 class="text-xl font-bold text-gray-700">最近のお知らせ（メール再送）</h2>
+                <button type="button" onclick="loadRecentAnnouncements()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold"><i class="fas fa-sync-alt mr-1"></i>更新</button>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">登録済みのお知らせを選択して、メールのみ再送信できます。</p>
+            <div id="recent-announcements-list" class="space-y-3">
+                <p class="text-sm text-gray-400">読み込み中...</p>
+            </div>
+            <p id="resend-message" class="mt-3 text-sm text-gray-600"></p>
+        </section>
     </main>
 
     <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
@@ -477,6 +489,50 @@
                 }
             }
 
+            // メール送信
+            const recipientEmails = getRecipientEmails(visibility, selectedMembers);
+            if (recipientEmails.length > 0) {
+                try {
+                    const dateLabel = payload.notice_date.replace(/-/g, "/");
+                    const mailSubject = `【南国市議会DXポータル】お知らせ: ${payload.title}`;
+                    const mailBody = [
+                        `${payload.owner_name} さんからお知らせが登録されました。`,
+                        "",
+                        `【日時】${dateLabel} ${payload.start_time}〜${payload.end_time}`,
+                        `【タイトル】${payload.title}`,
+                        `【内容】${payload.content}`,
+                        payload.contact_phone ? `【連絡先電話】${payload.contact_phone}` : null,
+                        payload.contact_email ? `【連絡先メール】${payload.contact_email}` : null,
+                        payload.remarks ? `【備考】${payload.remarks}` : null,
+                        "",
+                        "このメールはシステムから自動送信されています。"
+                    ].filter(line => line !== null).join("\n");
+
+                    const { error: mailError } = await dbClient.functions.invoke("mail-notice-send", {
+                        body: {
+                            toEmails: recipientEmails,
+                            subject: mailSubject,
+                            body: mailBody,
+                            senderName: payload.owner_name
+                        }
+                    });
+
+                    if (mailError) {
+                        console.warn("メール送信エラー:", mailError.message);
+                        document.getElementById("announcement-message").textContent =
+                            `登録しました（メール送信に失敗しました: ${mailError.message}）。`;
+                        clearForm();
+                        return;
+                    }
+                } catch (mailEx) {
+                    console.warn("メール送信例外:", mailEx);
+                    document.getElementById("announcement-message").textContent =
+                        `登録しました（メール送信中にエラーが発生しました）。`;
+                    clearForm();
+                    return;
+                }
+            }
+
             document.getElementById("announcement-message").textContent = "登録しました。";
             clearForm();
         }
@@ -505,6 +561,117 @@
         document.getElementById("announcement-form").addEventListener("submit", saveAnnouncement);
         document.getElementById("announcement-clear").addEventListener("click", clearForm);
 
+        async function loadRecentAnnouncements() {
+            const listEl = document.getElementById("recent-announcements-list");
+            listEl.innerHTML = '<p class="text-sm text-gray-400">読み込み中...</p>';
+
+            const { data, error } = await dbClient
+                .from("announcements")
+                .select("no, notice_date, title, visibility, owner_name")
+                .order("no", { ascending: false })
+                .limit(20);
+
+            if (error) {
+                listEl.innerHTML = `<p class="text-sm text-red-600">読み込み失敗: ${escapeHtml(error.message)}</p>`;
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                listEl.innerHTML = '<p class="text-sm text-gray-400">登録済みのお知らせはありません。</p>';
+                return;
+            }
+
+            listEl.innerHTML = data.map((item) => `
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 border border-gray-200 rounded-lg px-4 py-3 bg-gray-50">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-gray-800 truncate">${escapeHtml(item.title)}</p>
+                        <p class="text-xs text-gray-500">${escapeHtml(item.notice_date)} &nbsp;登録者: ${escapeHtml(item.owner_name || "")} &nbsp;配信: ${item.visibility === "all" ? "全員" : "指定"}</p>
+                    </div>
+                    <button
+                        type="button"
+                        class="flex-shrink-0 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-semibold"
+                        onclick="resendMail(${item.no}, this)">
+                        <i class="fas fa-paper-plane mr-1"></i>メール再送
+                    </button>
+                </div>
+            `).join("");
+        }
+
+        async function resendMail(announcementNo, btn) {
+            const resendMsgEl = document.getElementById("resend-message");
+            resendMsgEl.textContent = "";
+            btn.disabled = true;
+            btn.textContent = "送信中...";
+
+            try {
+                // お知らせ本文を取得
+                const { data: rows, error: fetchError } = await dbClient
+                    .from("announcements")
+                    .select("*")
+                    .eq("no", announcementNo)
+                    .single();
+
+                if (fetchError || !rows) {
+                    throw new Error(fetchError ? fetchError.message : "データが見つかりません");
+                }
+
+                const ann = rows;
+
+                // 送信先を取得
+                let recipientEmails;
+                if (ann.visibility === "specific") {
+                    const { data: recips, error: recipsError } = await dbClient
+                        .from("announcement_recipients")
+                        .select("recipient_email")
+                        .eq("announcement_no", announcementNo);
+
+                    if (recipsError) throw new Error(recipsError.message);
+                    recipientEmails = (recips || []).map((r) => normalizeEmail(r.recipient_email)).filter(Boolean);
+                } else {
+                    recipientEmails = getRecipientEmails("all", []);
+                }
+
+                if (recipientEmails.length === 0) {
+                    throw new Error("送信先が見つかりません");
+                }
+
+                const dateLabel = String(ann.notice_date || "").replace(/-/g, "/");
+                const mailSubject = `【南国市議会DXポータル】お知らせ: ${ann.title}`;
+                const mailBody = [
+                    `${ann.owner_name || ""} さんからお知らせが登録されました。`,
+                    "",
+                    `【日時】${dateLabel} ${ann.start_time || ""}〜${ann.end_time || ""}`,
+                    `【タイトル】${ann.title}`,
+                    `【内容】${ann.content}`,
+                    ann.contact_phone ? `【連絡先電話】${ann.contact_phone}` : null,
+                    ann.contact_email ? `【連絡先メール】${ann.contact_email}` : null,
+                    ann.remarks ? `【備考】${ann.remarks}` : null,
+                    "",
+                    "※このメールはシステムから手動再送されています。"
+                ].filter((line) => line !== null).join("\n");
+
+                const { error: mailError } = await dbClient.functions.invoke("mail-notice-send", {
+                    body: {
+                        toEmails: recipientEmails,
+                        subject: mailSubject,
+                        body: mailBody,
+                        senderName: ann.owner_name || "南国市議会DXポータル"
+                    }
+                });
+
+                if (mailError) throw new Error(mailError.message);
+
+                resendMsgEl.textContent = `✓ No.${announcementNo}「${ann.title}」を ${recipientEmails.length} 件に再送しました。`;
+                resendMsgEl.className = "mt-3 text-sm text-emerald-700";
+            } catch (err) {
+                resendMsgEl.textContent = `メール再送失敗: ${err.message}`;
+                resendMsgEl.className = "mt-3 text-sm text-red-600";
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>メール再送';
+            }
+        }
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -517,6 +684,7 @@
                 currentUserEmail = (session && session.email) || (profile && profile.email) || "";
                 document.getElementById("owner_name_display").value = currentOwnerName;
                 await loadMembers();
+                await loadRecentAnnouncements();
             }
         });
     </script>
