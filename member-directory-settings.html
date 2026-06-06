@@ -1,11 +1,13 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://www.googleapis.com https://calendar.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>議員・職員登録 | 南国市議会DXポータル</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
 </head>
 <body class="bg-gray-50 text-gray-800">
     <header class="bg-indigo-700 text-white shadow-lg p-4">
@@ -316,7 +318,7 @@
 
     <div id="flow-message" class="fixed top-5 right-5 z-50 hidden max-w-sm rounded-xl px-4 py-3 text-sm font-semibold shadow-lg"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
     <script src="auth-config.js"></script>
     <script src="auth.js"></script>
     <script>
