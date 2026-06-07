@@ -40,7 +40,14 @@
         </section>
 
         <section class="bg-white p-6 rounded-xl shadow-sm mb-8">
-            <h2 class="text-lg font-bold mb-4">資料を選択</h2>
+            <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <h2 class="text-lg font-bold">資料を選択</h2>
+                <a id="layout-editor-link"
+                    href="#"
+                    class="hidden text-xs md:text-sm bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg font-semibold hover:bg-indigo-200">
+                    <i class="fas fa-sliders-h mr-1"></i>配置を編集
+                </a>
+            </div>
             <div id="bill-buttons" class="space-y-5"></div>
         </section>
 
@@ -165,6 +172,7 @@
         };
 
         const DOCUMENT_TYPE_ORDER = ["summary", "bill", "report", "reason", "study", "doc"];
+        const MANUAL_LAYOUT_TYPE_ORDER = ["summary", "bill", "report", "reason"];
 
         function getSessionNumber() {
             const params = new URLSearchParams(window.location.search);
@@ -174,6 +182,107 @@
 
         function getDocuments(session) {
             return SESSION_DOCUMENTS[session] || [];
+        }
+
+        function buildDocumentIdentity(documentInfo) {
+            return [
+                documentInfo.storagePath || "",
+                documentInfo.relativePath || "",
+                documentInfo.fileName || ""
+            ].join("::");
+        }
+
+        function normalizeManualCategory(type) {
+            if (type === "summary") return "summary";
+            if (type === "report") return "report";
+            if (type === "reason" || type === "policy") return "reason";
+            return "bill";
+        }
+
+        function sortDocumentsForDisplay(documents) {
+            return documents.slice().sort((a, b) => {
+                const orderA = Number.isFinite(a.manualOrder) ? a.manualOrder : Number.MAX_SAFE_INTEGER;
+                const orderB = Number.isFinite(b.manualOrder) ? b.manualOrder : Number.MAX_SAFE_INTEGER;
+
+                if (orderA !== orderB) {
+                    return orderA - orderB;
+                }
+
+                const numA = extractNumberFromLabel(a.label);
+                const numB = extractNumberFromLabel(b.label);
+                return numA - numB;
+            });
+        }
+
+        async function applyManualLayoutForSession(supabase, session) {
+            if (!session || !SESSION_DOCUMENTS[session] || SESSION_DOCUMENTS[session].length === 0) {
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from("meeting_settings")
+                    .select("setting_payload")
+                    .eq("setting_key", `assembly_document_layout_${session}`)
+                    .maybeSingle();
+
+                if (error || !data || !data.setting_payload || !data.setting_payload.categories) {
+                    return;
+                }
+
+                const documents = SESSION_DOCUMENTS[session].map((documentInfo) => ({
+                    ...documentInfo,
+                    type: normalizeManualCategory(documentInfo.type),
+                    manualOrder: Number.MAX_SAFE_INTEGER
+                }));
+
+                const docMap = new Map();
+                documents.forEach((documentInfo) => {
+                    docMap.set(buildDocumentIdentity(documentInfo), documentInfo);
+                });
+
+                for (const category of MANUAL_LAYOUT_TYPE_ORDER) {
+                    const keys = Array.isArray(data.setting_payload.categories[category])
+                        ? data.setting_payload.categories[category]
+                        : [];
+
+                    keys.forEach((documentKey, index) => {
+                        const target = docMap.get(documentKey);
+                        if (!target) {
+                            return;
+                        }
+                        target.type = category;
+                        target.manualOrder = index;
+                    });
+                }
+
+                SESSION_DOCUMENTS[session] = documents;
+            } catch (error) {
+                console.warn("手動配置の読み込みに失敗しました:", error);
+            }
+        }
+
+        function updateLayoutEditorLink(session) {
+            const link = document.getElementById("layout-editor-link");
+            if (!link || !session) {
+                return;
+            }
+
+            const context = window.portalAuth && typeof window.portalAuth.getSession === "function"
+                ? window.portalAuth.getSession()
+                : null;
+            const isAdmin = !!(context && (
+                context.role === "admin"
+                || (context.profile && context.profile.access_role === "管理者")
+            ));
+
+            if (!isAdmin) {
+                link.classList.add("hidden");
+                return;
+            }
+
+            link.href = `bill-document-layout-settings.html?session=${encodeURIComponent(session)}`;
+            link.classList.remove("hidden");
         }
 
         function mergeDocumentsPreferUploaded(existingDocuments, uploadedDocuments) {
@@ -677,7 +786,7 @@
                 heading.textContent = DOCUMENT_TYPE_META[type].title;
                 grid.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3";
 
-                const sortedDocuments = sortDocumentsByNumber(groupedDocuments);
+                const sortedDocuments = sortDocumentsForDisplay(groupedDocuments);
                 for (const documentInfo of sortedDocuments) {
                     if (!isPreviewableDocument(documentInfo)) {
                         const a = document.createElement("a");
@@ -733,6 +842,7 @@
             document.getElementById("session-description").textContent = documents.length > 0
                 ? "議案・報告・提案理由・施政方針などのPDFを表示できます。"
                 : "この回次のPDFはまだ登録されていません。";
+            updateLayoutEditorLink(session);
             renderBillButtons(session);
 
             document.getElementById("viewer-title").textContent = "資料を選択すると別画面で開きます";
@@ -855,6 +965,8 @@
                         }
                     }
                 }
+
+                await applyManualLayoutForSession(supabase, session);
             } catch (err) {
                 console.warn("Could not load uploaded documents (exception):", err);
             }

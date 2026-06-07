@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資料配置編集 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center gap-4">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">資料配置編集</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6">
+            <a href="system-settings.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>システム設定に戻る
+            </a>
+        </div>
+
+        <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-cyan-600 to-blue-700 text-white shadow-lg mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold mb-2">資料配置編集</h1>
+            <p class="text-cyan-50">「資料を選択」に表示されるPDFを、カテゴリ間の移動と並び替えで手動配置できます。ドラッグで移動した後に保存してください。</p>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div class="md:col-span-2">
+                    <label for="session-input" class="block text-sm font-semibold text-gray-700 mb-2">議会回次</label>
+                    <input id="session-input" type="text" inputmode="numeric" placeholder="例: 447" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300">
+                </div>
+                <button id="load-layout-btn" type="button" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm">
+                    読み込み
+                </button>
+                <button id="save-layout-btn" type="button" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm">
+                    保存
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-3">保存先: meeting_settings.setting_key = assembly_document_layout_回次</p>
+            <div id="editor-message" class="hidden mt-4 rounded-lg px-4 py-3 text-sm"></div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-8">
+            <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <h2 class="text-lg font-bold text-gray-800">カテゴリ配置</h2>
+                <a id="preview-link" href="#" class="text-sm text-indigo-700 font-semibold hover:text-indigo-900 hidden">
+                    <i class="fas fa-external-link-alt mr-1"></i>議案書アーカイブで確認
+                </a>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">カードをドラッグして、カテゴリ内の順序やカテゴリ間の配置を調整します。</p>
+            <div id="layout-columns" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"></div>
+        </section>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        const CATEGORY_META = [
+            { key: "summary", title: "一覧表", panelClass: "border-slate-300 bg-slate-50" },
+            { key: "bill", title: "議案", panelClass: "border-indigo-300 bg-indigo-50" },
+            { key: "report", title: "報告", panelClass: "border-emerald-300 bg-emerald-50" },
+            { key: "reason", title: "提案理由・施政方針", panelClass: "border-amber-300 bg-amber-50" }
+        ];
+        const CATEGORY_KEYS = CATEGORY_META.map((item) => item.key);
+
+        let activeSession = "";
+        let allDocumentsByKey = new Map();
+        let dragState = { documentKey: "", sourceCategory: "" };
+
+        function getClient() {
+            if (window.portalAuth && typeof window.portalAuth.ensureClient === "function") {
+                return window.portalAuth.ensureClient();
+            }
+
+            if (
+                window.AUTH_CONFIG
+                && window.AUTH_CONFIG.supabaseUrl
+                && window.AUTH_CONFIG.supabaseAnonKey
+                && window.supabase
+                && typeof window.supabase.createClient === "function"
+            ) {
+                return window.supabase.createClient(window.AUTH_CONFIG.supabaseUrl, window.AUTH_CONFIG.supabaseAnonKey);
+            }
+
+            throw new Error("Supabaseクライアントを初期化できません。ページを再読み込みしてください。");
+        }
+
+        function normalizeCategory(type) {
+            if (type === "summary") return "summary";
+            if (type === "report") return "report";
+            if (type === "reason" || type === "policy") return "reason";
+            return "bill";
+        }
+
+        function buildDocumentKey(documentInfo) {
+            return [
+                documentInfo.storagePath || "",
+                documentInfo.relativePath || "",
+                documentInfo.fileName || ""
+            ].join("::");
+        }
+
+        function createEmptyLayout() {
+            return {
+                summary: [],
+                bill: [],
+                report: [],
+                reason: []
+            };
+        }
+
+        function showMessage(message, type) {
+            const box = document.getElementById("editor-message");
+            const className = type === "success"
+                ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                : "bg-red-50 border border-red-200 text-red-800";
+
+            box.className = `${className} mt-4 rounded-lg px-4 py-3 text-sm`;
+            box.textContent = message;
+            box.classList.remove("hidden");
+        }
+
+        function readSessionInput() {
+            const value = (document.getElementById("session-input").value || "").trim();
+            if (!/^\d+$/.test(value)) {
+                throw new Error("議会回次は数字で入力してください。例: 447");
+            }
+            return value;
+        }
+
+        function updatePreviewLink(session) {
+            const link = document.getElementById("preview-link");
+            link.href = `assembly-documents.html?session=${encodeURIComponent(session)}`;
+            link.classList.remove("hidden");
+        }
+
+        function renderLayoutColumns(layout) {
+            const root = document.getElementById("layout-columns");
+            root.innerHTML = "";
+
+            for (const category of CATEGORY_META) {
+                const section = document.createElement("section");
+                section.className = `rounded-xl border p-3 ${category.panelClass}`;
+
+                const heading = document.createElement("h3");
+                heading.className = "text-sm font-bold text-gray-700 mb-2";
+                heading.textContent = `${category.title} (${layout[category.key].length})`;
+
+                const list = document.createElement("div");
+                list.dataset.category = category.key;
+                list.className = "min-h-24 space-y-2 p-2 rounded-lg border border-dashed border-gray-300 bg-white";
+
+                list.addEventListener("dragover", onListDragOver);
+                list.addEventListener("drop", onListDrop);
+
+                for (const documentKey of layout[category.key]) {
+                    const documentInfo = allDocumentsByKey.get(documentKey);
+                    if (!documentInfo) {
+                        continue;
+                    }
+
+                    const card = document.createElement("div");
+                    card.dataset.documentKey = documentKey;
+                    card.draggable = true;
+                    card.className = "drag-card cursor-move rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100";
+                    card.innerHTML = `<i class="fas fa-grip-vertical text-gray-400 mr-2"></i>${documentInfo.label || documentInfo.fileName}`;
+
+                    card.addEventListener("dragstart", onCardDragStart);
+                    card.addEventListener("dragend", onCardDragEnd);
+
+                    list.appendChild(card);
+                }
+
+                section.appendChild(heading);
+                section.appendChild(list);
+                root.appendChild(section);
+            }
+        }
+
+        function getCardAfterPoint(list, clientY) {
+            const cards = Array.from(list.querySelectorAll(".drag-card:not(.dragging)"));
+            let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+
+            for (const card of cards) {
+                const rect = card.getBoundingClientRect();
+                const offset = clientY - rect.top - rect.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    closest = { offset, element: card };
+                }
+            }
+
+            return closest.element;
+        }
+
+        function onCardDragStart(event) {
+            const card = event.currentTarget;
+            const parentList = card.parentElement;
+            dragState = {
+                documentKey: card.dataset.documentKey || "",
+                sourceCategory: parentList ? parentList.dataset.category || "" : ""
+            };
+            card.classList.add("dragging", "opacity-60");
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", dragState.documentKey);
+        }
+
+        function onCardDragEnd(event) {
+            event.currentTarget.classList.remove("dragging", "opacity-60");
+            syncLayoutFromDom();
+        }
+
+        function onListDragOver(event) {
+            event.preventDefault();
+            const list = event.currentTarget;
+            const draggingCard = document.querySelector(".drag-card.dragging");
+            if (!draggingCard || !list) {
+                return;
+            }
+
+            const afterCard = getCardAfterPoint(list, event.clientY);
+            if (afterCard) {
+                list.insertBefore(draggingCard, afterCard);
+            } else {
+                list.appendChild(draggingCard);
+            }
+        }
+
+        function onListDrop(event) {
+            event.preventDefault();
+            syncLayoutFromDom();
+        }
+
+        function syncLayoutFromDom() {
+            const lists = document.querySelectorAll("#layout-columns [data-category]");
+            const nextLayout = createEmptyLayout();
+
+            lists.forEach((list) => {
+                const category = list.dataset.category;
+                if (!CATEGORY_KEYS.includes(category)) {
+                    return;
+                }
+
+                const cards = list.querySelectorAll(".drag-card");
+                cards.forEach((card) => {
+                    const key = card.dataset.documentKey;
+                    if (key) {
+                        nextLayout[category].push(key);
+                    }
+                });
+            });
+
+            renderLayoutColumns(nextLayout);
+        }
+
+        function mergeDocuments(rows) {
+            const merged = new Map();
+
+            for (const row of rows) {
+                const payload = row && row.setting_payload ? row.setting_payload : null;
+                const documents = payload && Array.isArray(payload.documents) ? payload.documents : [];
+
+                for (const documentInfo of documents) {
+                    const key = buildDocumentKey(documentInfo);
+                    merged.set(key, {
+                        ...documentInfo,
+                        label: documentInfo.label || documentInfo.fileName || "資料",
+                        _key: key
+                    });
+                }
+            }
+
+            return merged;
+        }
+
+        function buildDefaultLayout() {
+            const layout = createEmptyLayout();
+            const allDocs = Array.from(allDocumentsByKey.values());
+
+            for (const documentInfo of allDocs) {
+                const category = normalizeCategory(documentInfo.type);
+                layout[category].push(documentInfo._key);
+            }
+
+            return layout;
+        }
+
+        function applySavedLayout(defaultLayout, savedPayload) {
+            if (!savedPayload || !savedPayload.categories || typeof savedPayload.categories !== "object") {
+                return defaultLayout;
+            }
+
+            const nextLayout = createEmptyLayout();
+            const assigned = new Set();
+
+            for (const category of CATEGORY_KEYS) {
+                const keys = Array.isArray(savedPayload.categories[category]) ? savedPayload.categories[category] : [];
+                for (const key of keys) {
+                    if (!allDocumentsByKey.has(key) || assigned.has(key)) {
+                        continue;
+                    }
+                    nextLayout[category].push(key);
+                    assigned.add(key);
+                }
+            }
+
+            // 新しく追加された資料は既定カテゴリへ自動配置
+            for (const category of CATEGORY_KEYS) {
+                for (const key of defaultLayout[category]) {
+                    if (!assigned.has(key)) {
+                        nextLayout[category].push(key);
+                        assigned.add(key);
+                    }
+                }
+            }
+
+            return nextLayout;
+        }
+
+        async function loadLayout() {
+            try {
+                const session = readSessionInput();
+                const client = getClient();
+                const { data: uploadedRows, error: uploadedError } = await client
+                    .from("meeting_settings")
+                    .select("setting_payload")
+                    .like("setting_key", `uploaded_documents_${session}_%`);
+
+                if (uploadedError) {
+                    throw uploadedError;
+                }
+
+                allDocumentsByKey = mergeDocuments(uploadedRows || []);
+                if (allDocumentsByKey.size === 0) {
+                    throw new Error(`第${session}回の資料が見つかりません。先に議案PDF登録を実行してください。`);
+                }
+
+                const { data: savedRow, error: savedError } = await client
+                    .from("meeting_settings")
+                    .select("setting_payload")
+                    .eq("setting_key", `assembly_document_layout_${session}`)
+                    .maybeSingle();
+
+                if (savedError) {
+                    throw savedError;
+                }
+
+                activeSession = session;
+                const defaultLayout = buildDefaultLayout();
+                const layout = applySavedLayout(defaultLayout, savedRow ? savedRow.setting_payload : null);
+                renderLayoutColumns(layout);
+                updatePreviewLink(session);
+                showMessage(`第${session}回の配置を読み込みました。`, "success");
+            } catch (error) {
+                console.error("配置読み込みエラー:", error);
+                showMessage(error && error.message ? error.message : "配置の読み込みに失敗しました。", "error");
+            }
+        }
+
+        function collectLayoutForSave() {
+            const lists = document.querySelectorAll("#layout-columns [data-category]");
+            const layout = createEmptyLayout();
+
+            lists.forEach((list) => {
+                const category = list.dataset.category;
+                if (!CATEGORY_KEYS.includes(category)) {
+                    return;
+                }
+
+                list.querySelectorAll(".drag-card").forEach((card) => {
+                    const key = card.dataset.documentKey;
+                    if (key) {
+                        layout[category].push(key);
+                    }
+                });
+            });
+
+            return layout;
+        }
+
+        async function saveLayout() {
+            try {
+                if (!activeSession) {
+                    throw new Error("先に回次を読み込んでください。");
+                }
+
+                const categories = collectLayoutForSave();
+                const client = getClient();
+                const { error } = await client
+                    .from("meeting_settings")
+                    .upsert({
+                        setting_key: `assembly_document_layout_${activeSession}`,
+                        setting_payload: {
+                            session: activeSession,
+                            categories,
+                            updatedAt: new Date().toISOString()
+                        }
+                    }, { onConflict: "setting_key" });
+
+                if (error) {
+                    throw error;
+                }
+
+                showMessage(`第${activeSession}回の配置を保存しました。`, "success");
+            } catch (error) {
+                console.error("配置保存エラー:", error);
+                showMessage(error && error.message ? error.message : "配置の保存に失敗しました。", "error");
+            }
+        }
+
+        function setupFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const session = (params.get("session") || "").trim();
+            if (/^\d+$/.test(session)) {
+                document.getElementById("session-input").value = session;
+            }
+        }
+
+        document.getElementById("load-layout-btn").addEventListener("click", loadLayout);
+        document.getElementById("save-layout-btn").addEventListener("click", saveLayout);
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "admin",
+            authTargetId: "authArea",
+            returnTo: "bill-document-layout-settings.html",
+            onReady: () => {
+                setupFromUrl();
+                const hasSession = /^\d+$/.test((document.getElementById("session-input").value || "").trim());
+                if (hasSession) {
+                    loadLayout();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
