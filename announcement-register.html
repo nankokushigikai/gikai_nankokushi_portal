@@ -317,6 +317,14 @@
             return String(value || "").trim().toLowerCase();
         }
 
+        function buildPortalTopUrl() {
+            const configuredBase = String((window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "").trim();
+            if (configuredBase) {
+                return new URL("index.html", `${configuredBase.replace(/\/+$/, "")}/`).toString();
+            }
+            return new URL("index.html", window.location.href).toString();
+        }
+
         async function getGoogleProviderToken(client) {
             const { data, error } = await client.auth.getSession();
             if (!error && data && data.session && data.session.provider_token) {
@@ -564,6 +572,7 @@
             if (recipientEmails.length > 0) {
                 try {
                     const dateLabel = payload.notice_date.replace(/-/g, "/");
+                    const portalTopUrl = buildPortalTopUrl();
                     const mailSubject = `【南国市議会DXポータル】お知らせ: ${payload.title}`;
                     const mailBody = [
                         `${payload.owner_name} さんからお知らせが登録されました。`,
@@ -574,6 +583,9 @@
                         payload.contact_phone ? `【連絡先電話】${payload.contact_phone}` : null,
                         payload.contact_email ? `【連絡先メール】${payload.contact_email}` : null,
                         payload.remarks ? `【備考】${payload.remarks}` : null,
+                        "",
+                        "【南国市議会ポータルサイト】",
+                        portalTopUrl,
                         "",
                         "このメールはシステムから自動送信されています。"
                     ].filter(line => line !== null).join("\n");
@@ -710,6 +722,7 @@
                 }
 
                 const dateLabel = String(ann.notice_date || "").replace(/-/g, "/");
+                const portalTopUrl = buildPortalTopUrl();
                 const mailSubject = `【南国市議会DXポータル】お知らせ: ${ann.title}`;
                 const mailBody = [
                     `${ann.owner_name || ""} さんからお知らせが登録されました。`,
@@ -720,6 +733,9 @@
                     ann.contact_phone ? `【連絡先電話】${ann.contact_phone}` : null,
                     ann.contact_email ? `【連絡先メール】${ann.contact_email}` : null,
                     ann.remarks ? `【備考】${ann.remarks}` : null,
+                    "",
+                    "【南国市議会ポータルサイト】",
+                    portalTopUrl,
                     "",
                     "※このメールはシステムから手動再送されています。"
                 ].filter((line) => line !== null).join("\n");
