@@ -1,0 +1,12 @@
+# Netlify / Cloudflare Pages 用 HTTP セキュリティヘッダー
+# GitHub Pages では直接使用不可。Netlify または Cloudflare Pages へ移行した場合に有効になります。
+# Cloudflare を GitHub Pages の前段 CDN として使用する場合は、
+# Cloudflare Transform Rules または Workers で同等のヘッダーを設定してください。
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://www.googleapis.com https://calendar.google.com; worker-src blob:; frame-src https://accounts.google.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
