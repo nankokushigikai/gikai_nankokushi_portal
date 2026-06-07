@@ -22,36 +22,46 @@
 
         <div id="ordinance-message" class="mb-4 text-sm text-gray-600"></div>
 
-        <section id="ordinance-admin-panel" class="hidden bg-white border border-indigo-100 rounded-xl p-4 mb-6">
-            <h2 class="text-base font-bold text-indigo-800 mb-3">条例リンク登録/編集（管理者）</h2>
-            <form id="ordinance-form" class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <input id="ordinance-id" type="hidden">
-                <div class="md:col-span-1">
-                    <label for="ordinance-title" class="block text-xs font-semibold text-gray-600">タイトル（条例名）</label>
-                    <input id="ordinance-title" type="text" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div class="md:col-span-2">
-                    <label for="ordinance-url" class="block text-xs font-semibold text-gray-600">リンクURL</label>
-                    <input id="ordinance-url" type="url" required placeholder="https://..." class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                    <label for="ordinance-order" class="block text-xs font-semibold text-gray-600">表示順（小さい順）</label>
-                    <input id="ordinance-order" type="number" min="1" step="1" placeholder="例: 10" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div class="md:col-span-2 flex items-end gap-2">
-                    <button type="submit" id="ordinance-save-button" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">保存</button>
-                    <button type="button" id="ordinance-cancel-button" class="hidden bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">編集をキャンセル</button>
-                </div>
-            </form>
-            <p id="ordinance-admin-message" class="mt-2 text-sm text-gray-600"></p>
-            <div class="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2">
-                <button type="button" id="ordinance-order-save-button" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed" disabled>並び順を保存</button>
-                <span class="text-xs text-gray-500">管理者はタイルをドラッグして並び替えできます。</span>
-            </div>
+        <section id="ordinance-admin-toolbar" class="hidden bg-white border border-indigo-100 rounded-xl p-4 mb-6 flex flex-wrap items-center gap-2">
+            <button type="button" id="ordinance-edit-mode-toggle" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">編集モードにする</button>
+            <button type="button" id="ordinance-new-button" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">新規追加</button>
+            <span id="ordinance-mode-label" class="text-xs text-gray-600">現在: 表示モード</span>
         </section>
+
+        <p id="ordinance-admin-message" class="mb-4 text-sm text-gray-600"></p>
 
         <div id="ordinance-tile-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="text-gray-500 text-sm">読み込み中です...</div>
+        </div>
+
+        <div id="ordinance-edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl mx-4 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 id="ordinance-edit-modal-title" class="text-lg font-bold text-gray-800">条例リンク編集</h2>
+                    <button id="ordinance-edit-close" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+                </div>
+                <form id="ordinance-edit-form" class="space-y-3">
+                    <input id="ordinance-edit-id" type="hidden">
+                    <div>
+                        <label for="ordinance-edit-title" class="block text-xs font-semibold text-gray-600">タイトル（条例名）</label>
+                        <input id="ordinance-edit-title" type="text" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label for="ordinance-edit-url" class="block text-xs font-semibold text-gray-600">リンクURL</label>
+                        <input id="ordinance-edit-url" type="url" required placeholder="https://..." class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label for="ordinance-edit-order" class="block text-xs font-semibold text-gray-600">表示順（小さい順）</label>
+                        <input id="ordinance-edit-order" type="number" min="1" step="1" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div class="flex flex-wrap gap-2 justify-end pt-2">
+                        <button type="button" id="ordinance-edit-delete" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-4 py-2 rounded-lg text-sm font-semibold">削除</button>
+                        <button type="button" id="ordinance-edit-cancel" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
+                        <button type="submit" id="ordinance-edit-save" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">保存</button>
+                    </div>
+                </form>
+                <p id="ordinance-edit-message" class="mt-3 text-sm text-gray-600"></p>
+            </div>
         </div>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
@@ -62,9 +72,8 @@
         let ordinanceClient = null;
         let ordinanceUserEmail = "";
         let ordinanceIsAdmin = false;
+        let ordinanceEditMode = false;
         let ordinanceRows = [];
-        let draggingOrdinanceId = null;
-        let ordinanceOrderDirty = false;
 
         function escapeHtml(value) {
             return String(value || "")
@@ -100,7 +109,14 @@
         function setOrdinanceAdminMessage(text, isError = false) {
             const target = document.getElementById("ordinance-admin-message");
             if (!target) return;
-            target.className = `mt-2 text-sm ${isError ? "text-rose-700" : "text-gray-600"}`;
+            target.className = `mb-4 text-sm ${isError ? "text-rose-700" : "text-gray-600"}`;
+            target.textContent = text || "";
+        }
+
+        function setOrdinanceEditMessage(text, isError = false) {
+            const target = document.getElementById("ordinance-edit-message");
+            if (!target) return;
+            target.className = `mt-3 text-sm ${isError ? "text-rose-700" : "text-gray-600"}`;
             target.textContent = text || "";
         }
 
@@ -109,29 +125,23 @@
             return /does not exist|relation .* does not exist|schema cache/i.test(msg);
         }
 
-        function setOrdinanceOrderDirty(isDirty) {
-            ordinanceOrderDirty = !!isDirty;
-            const saveButton = document.getElementById("ordinance-order-save-button");
-            if (!saveButton) return;
-            saveButton.disabled = !ordinanceOrderDirty;
-        }
+        function updateEditModeUi() {
+            const toggleButton = document.getElementById("ordinance-edit-mode-toggle");
+            const newButton = document.getElementById("ordinance-new-button");
+            const modeLabel = document.getElementById("ordinance-mode-label");
 
-        function clearDropHints() {
-            const list = document.getElementById("ordinance-tile-list");
-            if (!list) return;
-            list.querySelectorAll("[data-id]").forEach((el) => {
-                el.classList.remove("ring-2", "ring-indigo-300", "border-t-4", "border-t-indigo-400", "border-b-4", "border-b-indigo-400");
-            });
-        }
+            if (!toggleButton || !newButton || !modeLabel) return;
 
-        function setDropHint(targetCard, placeAfter) {
-            clearDropHints();
-            if (!targetCard) return;
-            targetCard.classList.add("ring-2", "ring-indigo-300");
-            if (placeAfter) {
-                targetCard.classList.add("border-b-4", "border-b-indigo-400");
+            if (ordinanceEditMode) {
+                toggleButton.textContent = "表示モードに戻す";
+                toggleButton.className = "bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-semibold";
+                newButton.classList.remove("hidden");
+                modeLabel.textContent = "現在: 編集モード";
             } else {
-                targetCard.classList.add("border-t-4", "border-t-indigo-400");
+                toggleButton.textContent = "編集モードにする";
+                toggleButton.className = "bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold";
+                newButton.classList.add("hidden");
+                modeLabel.textContent = "現在: 表示モード";
             }
         }
 
@@ -147,141 +157,40 @@
             list.innerHTML = rows.map((row) => {
                 const title = escapeHtml(row.title || "（無題）");
                 const url = escapeHtml(row.link_url || "");
-                const adminActions = ordinanceIsAdmin
-                    ? `
-                        <div class="mt-2 flex gap-2">
-                            <button type="button" data-action="edit" data-id="${row.id}" class="text-xs px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700">編集</button>
-                            <button type="button" data-action="delete" data-id="${row.id}" class="text-xs px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700">削除</button>
-                        </div>
-                    `
-                    : "";
-                const dragHandle = ordinanceIsAdmin
-                    ? '<div class="text-xs text-gray-400 mb-2 select-none">並び替え: ドラッグ</div>'
-                    : "";
-                const draggable = ordinanceIsAdmin ? "true" : "false";
-                return `
-                    <div data-id="${row.id}" draggable="${draggable}" class="bg-white p-4 rounded-lg border border-gray-200 transition ${ordinanceIsAdmin ? "cursor-grab active:cursor-grabbing" : ""}">
-                        ${dragHandle}
-                        <a href="${url}" target="_blank" rel="noopener noreferrer" class="block hover:bg-purple-50 rounded">
+
+                if (ordinanceIsAdmin && ordinanceEditMode) {
+                    return `
+                        <button type="button" data-ordinance-id="${row.id}" class="w-full text-left bg-amber-50 p-4 rounded-lg border border-amber-200 hover:bg-amber-100 transition">
+                            <div class="text-xs font-semibold text-amber-700 mb-1">編集モード</div>
                             <div class="font-semibold text-gray-800">${title}</div>
                             <div class="mt-1 text-xs text-gray-500 break-all">${url}</div>
-                        </a>
-                        ${adminActions}
-                    </div>
+                        </button>
+                    `;
+                }
+
+                return `
+                    <a href="${url}" target="_blank" rel="noopener noreferrer" class="block bg-white p-4 rounded-lg border border-gray-200 hover:bg-purple-50 transition">
+                        <div class="font-semibold text-gray-800">${title}</div>
+                        <div class="mt-1 text-xs text-gray-500 break-all">${url}</div>
+                    </a>
                 `;
             }).join("");
         }
 
-        function reorderOrdinanceRowsByDom() {
-            const list = document.getElementById("ordinance-tile-list");
-            if (!list) return;
-
-            const orderIds = Array.from(list.querySelectorAll("[data-id]"))
-                .map((el) => Number(el.getAttribute("data-id")))
-                .filter((id) => Number.isFinite(id));
-
-            if (orderIds.length !== ordinanceRows.length) {
-                return;
-            }
-
-            const mapById = new Map(ordinanceRows.map((row) => [Number(row.id), row]));
-            ordinanceRows = orderIds.map((id) => mapById.get(id)).filter(Boolean);
+        function openOrdinanceEditModal(row) {
+            const isNew = !row;
+            document.getElementById("ordinance-edit-id").value = isNew ? "" : String(row.id);
+            document.getElementById("ordinance-edit-title").value = isNew ? "" : (row.title || "");
+            document.getElementById("ordinance-edit-url").value = isNew ? "" : (row.link_url || "");
+            document.getElementById("ordinance-edit-order").value = isNew ? "100" : String(row.display_order || 100);
+            document.getElementById("ordinance-edit-modal-title").textContent = isNew ? "条例リンク新規追加" : "条例リンク編集";
+            document.getElementById("ordinance-edit-delete").classList.toggle("hidden", isNew);
+            setOrdinanceEditMessage("");
+            document.getElementById("ordinance-edit-modal").classList.remove("hidden");
         }
 
-        async function saveOrdinanceOrder() {
-            if (!ordinanceClient || !ordinanceIsAdmin) {
-                setOrdinanceAdminMessage("並び順保存の権限がありません。", true);
-                return;
-            }
-
-            if (!ordinanceOrderDirty) {
-                setOrdinanceAdminMessage("並び順の変更はありません。");
-                return;
-            }
-
-            const saveButton = document.getElementById("ordinance-order-save-button");
-            saveButton.disabled = true;
-            setOrdinanceAdminMessage("並び順を保存中...");
-
-            const updates = ordinanceRows.map((row, index) => ({
-                id: Number(row.id),
-                display_order: (index + 1) * 10,
-                updated_at: new Date().toISOString()
-            }));
-
-            for (const updateRow of updates) {
-                const { error } = await ordinanceClient
-                    .from(ORDINANCE_TABLE)
-                    .update({
-                        display_order: updateRow.display_order,
-                        updated_at: updateRow.updated_at
-                    })
-                    .eq("id", updateRow.id);
-
-                if (error) {
-                    setOrdinanceAdminMessage("並び順の保存に失敗しました: " + (error.message || "unknown"), true);
-                    setOrdinanceOrderDirty(true);
-                    return;
-                }
-            }
-
-            setOrdinanceAdminMessage("並び順を保存しました。");
-            setOrdinanceOrderDirty(false);
-            await loadNankokuOrdinances();
-        }
-
-        function resetOrdinanceForm() {
-            document.getElementById("ordinance-form").reset();
-            document.getElementById("ordinance-id").value = "";
-            document.getElementById("ordinance-save-button").textContent = "保存";
-            document.getElementById("ordinance-cancel-button").classList.add("hidden");
-        }
-
-        function startOrdinanceEdit(rowId) {
-            const row = ordinanceRows.find((item) => Number(item.id) === Number(rowId));
-            if (!row) {
-                setOrdinanceAdminMessage("対象データが見つかりません。", true);
-                return;
-            }
-
-            document.getElementById("ordinance-id").value = String(row.id);
-            document.getElementById("ordinance-title").value = row.title || "";
-            document.getElementById("ordinance-url").value = row.link_url || "";
-            document.getElementById("ordinance-order").value = String(row.display_order || 100);
-            document.getElementById("ordinance-save-button").textContent = "更新";
-            document.getElementById("ordinance-cancel-button").classList.remove("hidden");
-            setOrdinanceAdminMessage(`編集中: ${row.title || "（無題）"}`);
-        }
-
-        async function deleteOrdinance(rowId) {
-            if (!ordinanceClient || !ordinanceIsAdmin) {
-                setOrdinanceAdminMessage("削除権限がありません。", true);
-                return;
-            }
-
-            const row = ordinanceRows.find((item) => Number(item.id) === Number(rowId));
-            if (!row) {
-                setOrdinanceAdminMessage("対象データが見つかりません。", true);
-                return;
-            }
-
-            const ok = window.confirm(`「${row.title || "（無題）"}」を削除しますか？`);
-            if (!ok) return;
-
-            setOrdinanceAdminMessage("削除中...");
-            const { error } = await ordinanceClient
-                .from(ORDINANCE_TABLE)
-                .delete()
-                .eq("id", Number(rowId));
-
-            if (error) {
-                setOrdinanceAdminMessage("削除に失敗しました: " + (error.message || "unknown"), true);
-                return;
-            }
-
-            setOrdinanceAdminMessage("削除しました。");
-            resetOrdinanceForm();
-            await loadNankokuOrdinances();
+        function closeOrdinanceEditModal() {
+            document.getElementById("ordinance-edit-modal").classList.add("hidden");
         }
 
         async function loadNankokuOrdinances() {
@@ -301,49 +210,44 @@
                 } else {
                     setOrdinanceMessage("条例リンクの読み込みに失敗しました: " + (error.message || "unknown"), true);
                 }
-                renderOrdinanceTiles([]);
                 ordinanceRows = [];
+                renderOrdinanceTiles([]);
                 return;
             }
 
             ordinanceRows = data || [];
             renderOrdinanceTiles(ordinanceRows);
-            setOrdinanceMessage(`条例リンク ${data ? data.length : 0} 件`);
-            setOrdinanceOrderDirty(false);
+            setOrdinanceMessage(`条例リンク ${ordinanceRows.length} 件`);
         }
 
-        async function saveNankokuOrdinance(event) {
+        async function saveOrdinanceFromModal(event) {
             event.preventDefault();
             if (!ordinanceClient || !ordinanceIsAdmin) {
-                setOrdinanceAdminMessage("保存権限がありません。", true);
+                setOrdinanceEditMessage("保存権限がありません。", true);
                 return;
             }
 
-            const saveButton = document.getElementById("ordinance-save-button");
-            const ordinanceId = String(document.getElementById("ordinance-id").value || "").trim();
-            const title = String(document.getElementById("ordinance-title").value || "").trim();
-            const urlInput = document.getElementById("ordinance-url").value;
-            const linkUrl = normalizeHttpUrl(urlInput);
-            const orderInput = String(document.getElementById("ordinance-order").value || "").trim();
-            const displayOrder = orderInput ? Number(orderInput) : 100;
+            const saveButton = document.getElementById("ordinance-edit-save");
+            const ordinanceId = String(document.getElementById("ordinance-edit-id").value || "").trim();
+            const title = String(document.getElementById("ordinance-edit-title").value || "").trim();
+            const linkUrl = normalizeHttpUrl(document.getElementById("ordinance-edit-url").value);
+            const displayOrder = Number(document.getElementById("ordinance-edit-order").value || "");
 
             if (!title) {
-                setOrdinanceAdminMessage("タイトルを入力してください。", true);
+                setOrdinanceEditMessage("タイトルを入力してください。", true);
                 return;
             }
-
             if (!linkUrl) {
-                setOrdinanceAdminMessage("URLは http:// または https:// で入力してください。", true);
+                setOrdinanceEditMessage("URLは http:// または https:// で入力してください。", true);
                 return;
             }
-
             if (!Number.isFinite(displayOrder) || displayOrder <= 0) {
-                setOrdinanceAdminMessage("表示順は1以上の数値で入力してください。", true);
+                setOrdinanceEditMessage("表示順は1以上の数値で入力してください。", true);
                 return;
             }
 
             saveButton.disabled = true;
-            setOrdinanceAdminMessage("保存中...");
+            setOrdinanceEditMessage("保存中...");
 
             let error = null;
             if (ordinanceId) {
@@ -373,116 +277,82 @@
             saveButton.disabled = false;
 
             if (error) {
-                setOrdinanceAdminMessage("保存に失敗しました: " + (error.message || "unknown"), true);
+                setOrdinanceEditMessage("保存に失敗しました: " + (error.message || "unknown"), true);
                 return;
             }
 
-            resetOrdinanceForm();
-            setOrdinanceAdminMessage(ordinanceId ? "更新しました。" : "保存しました。");
+            closeOrdinanceEditModal();
+            setOrdinanceAdminMessage(ordinanceId ? "更新しました。" : "追加しました。");
             await loadNankokuOrdinances();
         }
 
-        document.getElementById("ordinance-form").addEventListener("submit", saveNankokuOrdinance);
-        document.getElementById("ordinance-cancel-button").addEventListener("click", () => {
-            resetOrdinanceForm();
-            setOrdinanceAdminMessage("編集をキャンセルしました。");
-        });
-
-        document.getElementById("ordinance-order-save-button").addEventListener("click", saveOrdinanceOrder);
-
-        document.getElementById("ordinance-tile-list").addEventListener("dragstart", (event) => {
-            if (!ordinanceIsAdmin) return;
-            const card = event.target.closest("[data-id]");
-            if (!card) return;
-            draggingOrdinanceId = Number(card.getAttribute("data-id"));
-            if (event.dataTransfer) {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", String(draggingOrdinanceId));
-            }
-            card.classList.add("opacity-60", "ring-2", "ring-indigo-300");
-        });
-
-        document.getElementById("ordinance-tile-list").addEventListener("dragend", (event) => {
-            const card = event.target.closest("[data-id]");
-            if (card) {
-                card.classList.remove("opacity-60", "ring-2", "ring-indigo-300");
-            }
-            clearDropHints();
-            draggingOrdinanceId = null;
-        });
-
-        document.getElementById("ordinance-tile-list").addEventListener("dragover", (event) => {
-            if (!ordinanceIsAdmin) return;
-            event.preventDefault();
-            if (event.dataTransfer) {
-                event.dataTransfer.dropEffect = "move";
-            }
-
-            const targetCard = event.target.closest("[data-id]");
-            if (!targetCard || !Number.isFinite(draggingOrdinanceId)) {
-                clearDropHints();
+        async function deleteOrdinanceFromModal() {
+            if (!ordinanceClient || !ordinanceIsAdmin) {
+                setOrdinanceEditMessage("削除権限がありません。", true);
                 return;
             }
 
-            const targetId = Number(targetCard.getAttribute("data-id"));
-            if (!Number.isFinite(targetId) || targetId === draggingOrdinanceId) {
-                clearDropHints();
+            const ordinanceId = Number(document.getElementById("ordinance-edit-id").value || "0");
+            if (!Number.isFinite(ordinanceId) || ordinanceId <= 0) {
+                setOrdinanceEditMessage("削除対象がありません。", true);
                 return;
             }
 
-            const targetRect = targetCard.getBoundingClientRect();
-            const placeAfter = event.clientY > targetRect.top + targetRect.height / 2;
-            setDropHint(targetCard, placeAfter);
+            const row = ordinanceRows.find((item) => Number(item.id) === ordinanceId);
+            const ok = window.confirm(`「${row && row.title ? row.title : "（無題）"}」を削除しますか？`);
+            if (!ok) return;
+
+            const { error } = await ordinanceClient
+                .from(ORDINANCE_TABLE)
+                .delete()
+                .eq("id", ordinanceId);
+
+            if (error) {
+                setOrdinanceEditMessage("削除に失敗しました: " + (error.message || "unknown"), true);
+                return;
+            }
+
+            closeOrdinanceEditModal();
+            setOrdinanceAdminMessage("削除しました。");
+            await loadNankokuOrdinances();
+        }
+
+        document.getElementById("ordinance-edit-mode-toggle").addEventListener("click", () => {
+            ordinanceEditMode = !ordinanceEditMode;
+            updateEditModeUi();
+            renderOrdinanceTiles(ordinanceRows);
+            setOrdinanceAdminMessage(ordinanceEditMode ? "編集モードです。タイルを押すと編集モーダルが開きます。" : "表示モードに戻しました。");
         });
 
-        document.getElementById("ordinance-tile-list").addEventListener("drop", (event) => {
-            if (!ordinanceIsAdmin) return;
-            event.preventDefault();
-
-            const targetCard = event.target.closest("[data-id]");
-            const list = document.getElementById("ordinance-tile-list");
-            if (!targetCard || !list || !Number.isFinite(draggingOrdinanceId)) {
-                return;
-            }
-
-            const targetId = Number(targetCard.getAttribute("data-id"));
-            if (!Number.isFinite(targetId) || targetId === draggingOrdinanceId) {
-                clearDropHints();
-                return;
-            }
-
-            const draggingCard = list.querySelector(`[data-id="${draggingOrdinanceId}"]`);
-            if (!draggingCard) return;
-
-            const targetRect = targetCard.getBoundingClientRect();
-            const placeAfter = event.clientY > targetRect.top + targetRect.height / 2;
-            if (placeAfter) {
-                targetCard.after(draggingCard);
-            } else {
-                targetCard.before(draggingCard);
-            }
-
-            clearDropHints();
-            reorderOrdinanceRowsByDom();
-            setOrdinanceOrderDirty(true);
-            setOrdinanceAdminMessage("並び順を変更しました。『並び順を保存』を押してください。");
+        document.getElementById("ordinance-new-button").addEventListener("click", () => {
+            openOrdinanceEditModal(null);
         });
 
-        document.getElementById("ordinance-tile-list").addEventListener("click", async (event) => {
-            const actionButton = event.target.closest("button[data-action]");
-            if (!actionButton) return;
+        document.getElementById("ordinance-tile-list").addEventListener("click", (event) => {
+            if (!ordinanceIsAdmin || !ordinanceEditMode) {
+                return;
+            }
+
+            const tile = event.target.closest("[data-ordinance-id]");
+            if (!tile) return;
 
             event.preventDefault();
-            event.stopPropagation();
+            const rowId = Number(tile.getAttribute("data-ordinance-id"));
+            const row = ordinanceRows.find((item) => Number(item.id) === rowId) || null;
+            if (!row) {
+                setOrdinanceAdminMessage("対象データが見つかりません。", true);
+                return;
+            }
+            openOrdinanceEditModal(row);
+        });
 
-            const action = actionButton.getAttribute("data-action");
-            const rowId = actionButton.getAttribute("data-id");
-            if (!rowId) return;
-
-            if (action === "edit") {
-                startOrdinanceEdit(rowId);
-            } else if (action === "delete") {
-                await deleteOrdinance(rowId);
+        document.getElementById("ordinance-edit-form").addEventListener("submit", saveOrdinanceFromModal);
+        document.getElementById("ordinance-edit-cancel").addEventListener("click", closeOrdinanceEditModal);
+        document.getElementById("ordinance-edit-close").addEventListener("click", closeOrdinanceEditModal);
+        document.getElementById("ordinance-edit-delete").addEventListener("click", deleteOrdinanceFromModal);
+        document.getElementById("ordinance-edit-modal").addEventListener("click", (event) => {
+            if (event.target && event.target.id === "ordinance-edit-modal") {
+                closeOrdinanceEditModal();
             }
         });
 
@@ -497,9 +367,10 @@
                     || (context.profile && context.profile.access_role === "管理者");
 
                 if (ordinanceIsAdmin) {
-                    document.getElementById("ordinance-admin-panel").classList.remove("hidden");
+                    document.getElementById("ordinance-admin-toolbar").classList.remove("hidden");
                 }
 
+                updateEditModeUi();
                 await loadNankokuOrdinances();
             }
         });
