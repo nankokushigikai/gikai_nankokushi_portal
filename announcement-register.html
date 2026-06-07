@@ -401,6 +401,7 @@
         function buildFriendlyMailError(detailText) {
             const raw = String(detailText || "").trim();
             const lower = raw.toLowerCase();
+            const rawHint = raw.length > 220 ? `${raw.slice(0, 220)}...` : raw;
 
             if (!raw) {
                 return "メール送信エラー（詳細不明）";
@@ -414,8 +415,12 @@
                 return "Gmail送信に必要な環境変数が未設定です。GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GMAIL_FROM_EMAIL を Supabase Secrets に設定してください。";
             }
 
+            if (lower.includes("invalid_client") || lower.includes("unauthorized_client") || lower.includes("client_secret") || lower.includes("client id") || lower.includes("client_id")) {
+                return `Google OAuth クライアント情報が一致していません。GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET を再確認し、同じクライアントで発行した refresh token を設定してください。詳細: ${rawHint}`;
+            }
+
             if (lower.includes("gmail token refresh error") || lower.includes("invalid_grant") || lower.includes("expired or revoked")) {
-                return "Gmail認証トークンの更新に失敗しました。GMAIL_REFRESH_TOKEN の再発行と再設定を行ってください。";
+                return `Gmail認証トークンの更新に失敗しました。GMAIL_REFRESH_TOKEN の再発行と再設定を行ってください。詳細: ${rawHint}`;
             }
 
             if (lower.includes("gmail api error") && (lower.includes("insufficient permissions") || lower.includes("forbidden") || lower.includes("insufficient authentication scopes"))) {
