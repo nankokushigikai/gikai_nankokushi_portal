@@ -38,6 +38,7 @@
                         <div class="text-rose-500 text-xl"><i class="fas fa-bullhorn"></i></div>
                         <h3 class="text-base font-bold text-gray-800">お知らせ</h3>
                         <button id="announcement-count-link" type="button" class="text-xs font-semibold text-rose-600 hover:text-rose-700 underline underline-offset-2">0件</button>
+                        <button id="announcement-canceled-toggle" type="button" class="text-xs font-semibold text-gray-600 hover:text-gray-800 underline underline-offset-2">取消を表示</button>
                     </div>
                     <a href="announcements.html" class="inline-block text-xs font-semibold text-rose-600 hover:text-rose-700">一覧を確認</a>
                 </div>
@@ -212,9 +213,16 @@
     <script>
         let allAnnouncementRows = [];
         let announcementModalShowPast = false;
+        let announcementShowCanceled = false;
         let announcementModalSearchTerm = "";
         let announcementModalContext = { client: null, userEmail: "", userRole: "viewer", responderName: "" };
         let currentAnnouncementDetailItem = null;
+
+        function updateCanceledToggleLabel() {
+            const toggle = document.getElementById("announcement-canceled-toggle");
+            if (!toggle) return;
+            toggle.textContent = announcementShowCanceled ? "取消を隠す" : "取消を表示";
+        }
 
         function getPersonalCalendarActionState(item) {
             const lifecycle = String((item && item.lifecycle_status) || "active");
@@ -620,9 +628,12 @@
         function getVisibleAnnouncementsForModal() {
             const today = getTodayDateString();
             const rows = Array.isArray(allAnnouncementRows) ? allAnnouncementRows.slice() : [];
+            const lifecycleFilteredRows = announcementShowCanceled
+                ? rows
+                : rows.filter((item) => String((item && item.lifecycle_status) || "active") !== "canceled");
 
             if (announcementModalShowPast) {
-                return rows.sort((a, b) => {
+                return lifecycleFilteredRows.sort((a, b) => {
                     const dateCompare = String(b.notice_date || "").localeCompare(String(a.notice_date || ""));
                     if (dateCompare !== 0) return dateCompare;
                     const timeCompare = String(b.start_time || "").localeCompare(String(a.start_time || ""));
@@ -631,7 +642,7 @@
                 });
             }
 
-            return rows
+            return lifecycleFilteredRows
                 .filter((item) => String(item.notice_date || "") >= today)
                 .sort((a, b) => {
                     const dateCompare = String(a.notice_date || "").localeCompare(String(b.notice_date || ""));
@@ -669,7 +680,10 @@
             const baseRows = getVisibleAnnouncementsForModal();
             const rows = getFilteredAnnouncementsForModal();
             const today = getTodayDateString();
-            const pastCount = (allAnnouncementRows || []).filter((item) => String(item.notice_date || "") < today).length;
+            const sourceRows = announcementShowCanceled
+                ? (allAnnouncementRows || [])
+                : (allAnnouncementRows || []).filter((item) => String((item && item.lifecycle_status) || "active") !== "canceled");
+            const pastCount = sourceRows.filter((item) => String(item.notice_date || "") < today).length;
             toggle.textContent = announcementModalShowPast ? "過去のデータを隠す" : "過去のデータを表示";
             searchInput.value = announcementModalSearchTerm;
 
@@ -944,6 +958,7 @@
         async function loadAnnouncements(client, userEmail, userRole, responderName) {
             if (!client) {
                 allAnnouncementRows = [];
+                updateCanceledToggleLabel();
                 updateAnnouncementCountLink();
                 renderAnnouncements([]);
                 return;
@@ -960,6 +975,7 @@
             if (error) {
                 console.error("お知らせ読み込みエラー:", error);
                 allAnnouncementRows = [];
+                updateCanceledToggleLabel();
                 updateAnnouncementCountLink();
                 renderAnnouncements([]);
                 setAnnouncementTileMessage("お知らせの読込に失敗しました。", true);
@@ -967,6 +983,7 @@
             }
 
             allAnnouncementRows = data || [];
+            updateCanceledToggleLabel();
             updateAnnouncementCountLink();
             const rows = getVisibleAnnouncementsForModal();
             const normalizedUserEmail = normalizeEmail(userEmail);
@@ -1085,6 +1102,18 @@
         document.getElementById("announcement-title-search").addEventListener("input", (event) => {
             announcementModalSearchTerm = String(event.target.value || "");
             renderAnnouncementModal();
+        });
+
+        document.getElementById("announcement-canceled-toggle").addEventListener("click", async () => {
+            announcementShowCanceled = !announcementShowCanceled;
+            updateCanceledToggleLabel();
+            const context = announcementModalContext || {};
+            if (context.client) {
+                await loadAnnouncements(context.client, context.userEmail || "", context.userRole || "viewer", context.responderName || "");
+            }
+            if (!document.getElementById("announcement-list-modal").classList.contains("hidden")) {
+                renderAnnouncementModal();
+            }
         });
 
         document.getElementById("next-announcement-link").addEventListener("click", () => {

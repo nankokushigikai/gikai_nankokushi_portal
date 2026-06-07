@@ -43,6 +43,10 @@
                 </label>
             </div>
 
+            <div class="mb-3">
+                <button id="announcement-canceled-toggle" type="button" class="text-xs font-semibold text-gray-600 hover:text-gray-800 underline underline-offset-2">取消済みを表示</button>
+            </div>
+
             <div id="announcement-tile-list" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <div class="text-gray-500 col-span-full">読み込み中です...</div>
             </div>
@@ -236,6 +240,7 @@
         const personalCalendarAlertsByNo = new Map();
         const myPersonalCalendarLinksByNo = new Map();
         let attendanceAnnouncements = [];
+        let showCanceledAnnouncements = false;
 
         const MEMBER_GROUPS = [
             { id: "leaders", label: "正副議長" },
@@ -274,6 +279,12 @@
             function normalizeEmail(value) {
                 return String(value || "").trim().toLowerCase();
             }
+
+        function updateCanceledToggleLabel() {
+            const toggle = document.getElementById("announcement-canceled-toggle");
+            if (!toggle) return;
+            toggle.textContent = showCanceledAnnouncements ? "取消済みを隠す" : "取消済みを表示";
+        }
 
         function formatDate(dateValue) {
             if (!dateValue) return "";
@@ -723,6 +734,66 @@
             });
 
             message.textContent = "お知らせを取消にしました。";
+            await loadAnnouncements();
+        }
+
+        async function restoreAnnouncement(announcementNo) {
+            const message = document.getElementById("announcement-message");
+            const target = announcementByNo.get(Number(announcementNo));
+            if (!target) {
+                message.textContent = "再表示対象のお知らせが見つかりません。";
+                return;
+            }
+
+            const confirmed = window.confirm("この取消済みお知らせを再表示します。よろしいですか？");
+            if (!confirmed) {
+                return;
+            }
+
+            const restoredAt = new Date().toISOString();
+            const nextVersion = Number(target.version_no || 1) + 1;
+            const { error } = await dbClient
+                .from("announcements")
+                .update({
+                    lifecycle_status: "active",
+                    canceled_at: null,
+                    canceled_by_email: null,
+                    cancel_note: null,
+                    version_no: nextVersion,
+                    updated_at: restoredAt
+                })
+                .eq("no", Number(announcementNo));
+
+            if (error) {
+                message.textContent = "お知らせの再表示に失敗しました: " + error.message;
+                return;
+            }
+
+            const { error: linkStatusError } = await dbClient
+                .from("announcement_calendar_links")
+                .update({
+                    sync_status: "needs_update",
+                    updated_at: restoredAt,
+                    last_synced_version: Math.max(0, nextVersion - 1)
+                })
+                .eq("announcement_no", Number(announcementNo))
+                .in("sync_status", ["canceled_pending", "canceled_synced"]);
+
+            if (linkStatusError) {
+                message.textContent = "再表示は完了しましたが、個人Google連携状態の更新に失敗しました: " + linkStatusError.message;
+                await loadAnnouncements();
+                return;
+            }
+
+            await writeAuditLog(dbClient, {
+                actionType: "お知らせ再表示",
+                targetEmail: currentUserEmail || "",
+                beforeValue: `announcement_no=${target.no}; lifecycle=canceled`,
+                afterValue: "active",
+                note: "管理画面で再表示"
+            });
+
+            message.textContent = "取消済みのお知らせを再表示しました。";
             await loadAnnouncements();
         }
 
@@ -1492,14 +1563,23 @@
             }
 
             const rows = data || [];
+            const lifecycleFilteredRows = showCanceledAnnouncements
+                ? rows
+                : rows.filter((item) => String((item && item.lifecycle_status) || "active") !== "canceled");
             const unlinkedOnly = currentRole === "admin" && document.getElementById("google-unlinked-only")?.checked;
             const visibleRows = unlinkedOnly
-                ? rows.filter((item) => !item.google_calendar_event_id)
-                : rows;
+                ? lifecycleFilteredRows.filter((item) => !item.google_calendar_event_id)
+                : lifecycleFilteredRows;
 
             if (rows.length === 0) {
                 list.innerHTML = '<div class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 col-span-full">お知らせはありません。</div>';
                 message.textContent = `表示対象が0件です（role: ${currentRole}, email: ${currentUserEmail || "未取得"}）。`;
+                return;
+            }
+
+            if (!showCanceledAnnouncements && lifecycleFilteredRows.length === 0) {
+                list.innerHTML = '<div class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500 col-span-full">取消済み以外のお知らせはありません。上の「取消済みを表示」で確認できます。</div>';
+                await renderAttendanceAdminSection(rows);
                 return;
             }
 
@@ -1509,7 +1589,7 @@
                 return;
             }
 
-            const announcementNos = rows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
+            const announcementNos = visibleRows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
 
             if (announcementNos.length > 0) {
                 const { data: myResponses } = await dbClient
@@ -1693,10 +1773,14 @@
                             <h3 class="text-xs font-semibold tracking-wide text-gray-500">操作</h3>
                             <div class="mt-2 text-sm text-gray-700">
                         ${canEdit
-                            ? `<div class="flex items-center gap-2">
-                                <button class="text-rose-700 hover:text-rose-900 font-semibold" data-edit-no="${item.no}">修正</button>
-                                <button class="text-gray-700 hover:text-gray-900 font-semibold" data-delete-no="${item.no}">取消</button>
-                            </div>`
+                            ? isCanceled
+                                ? `<div class="flex items-center gap-2">
+                                    <button class="text-emerald-700 hover:text-emerald-900 font-semibold" data-restore-no="${item.no}">再表示</button>
+                                  </div>`
+                                : `<div class="flex items-center gap-2">
+                                    <button class="text-rose-700 hover:text-rose-900 font-semibold" data-edit-no="${item.no}">修正</button>
+                                    <button class="text-gray-700 hover:text-gray-900 font-semibold" data-delete-no="${item.no}">取消</button>
+                                  </div>`
                             : `<span class="text-gray-400">-</span>`}
                             </div>
                         </section>
@@ -1723,6 +1807,14 @@
                     const noValue = Number(btn.getAttribute("data-delete-no"));
                     if (!noValue) return;
                     await deleteAnnouncement(noValue);
+                });
+            });
+
+            list.querySelectorAll("button[data-restore-no]").forEach((btn) => {
+                btn.addEventListener("click", async () => {
+                    const noValue = Number(btn.getAttribute("data-restore-no"));
+                    if (!noValue) return;
+                    await restoreAnnouncement(noValue);
                 });
             });
 
@@ -1941,6 +2033,12 @@
             await loadAnnouncements();
         });
 
+        document.getElementById("announcement-canceled-toggle").addEventListener("click", async () => {
+            showCanceledAnnouncements = !showCanceledAnnouncements;
+            updateCanceledToggleLabel();
+            await loadAnnouncements();
+        });
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -1956,6 +2054,8 @@
                     document.getElementById("announcement-edit-note").classList.remove("hidden");
                     document.getElementById("google-unlinked-only-wrap").classList.remove("hidden");
                 }
+
+                updateCanceledToggleLabel();
                 
                 // メンバーを読み込む
                 const { data: members } = await dbClient
