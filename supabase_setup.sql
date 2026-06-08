@@ -1270,6 +1270,7 @@ for delete using (member_id = public.current_member_id());
 -- ----------------------------------------------------------------------
 create table if not exists public.general_question_tracker (
     id bigserial primary key,
+    owner_account_id uuid,
     session_id text not null,
     question_date date,
     member_name text not null,
@@ -1299,24 +1300,31 @@ on public.general_question_tracker (status);
 create index if not exists general_question_tracker_member_idx
 on public.general_question_tracker (member_name);
 
+create index if not exists general_question_tracker_owner_idx
+on public.general_question_tracker (owner_account_id);
+
+alter table public.general_question_tracker
+add column if not exists owner_account_id uuid;
+
 alter table public.general_question_tracker enable row level security;
 
--- general_question_tracker ポリシー（認証ユーザー全員が読み書き可）
+-- general_question_tracker ポリシー（認証ユーザーは自分の案件のみ読み書き可）
 drop policy if exists general_question_tracker_select_authenticated on public.general_question_tracker;
 create policy general_question_tracker_select_authenticated on public.general_question_tracker
-for select using (auth.uid() is not null);
+for select using (auth.uid() is not null and owner_account_id = auth.uid());
 
 drop policy if exists general_question_tracker_insert_authenticated on public.general_question_tracker;
 create policy general_question_tracker_insert_authenticated on public.general_question_tracker
-for insert with check (auth.uid() is not null);
+for insert with check (auth.uid() is not null and owner_account_id = auth.uid());
 
 drop policy if exists general_question_tracker_update_authenticated on public.general_question_tracker;
 create policy general_question_tracker_update_authenticated on public.general_question_tracker
-for update using (auth.uid() is not null);
+for update using (auth.uid() is not null and owner_account_id = auth.uid())
+with check (auth.uid() is not null and owner_account_id = auth.uid());
 
 drop policy if exists general_question_tracker_delete_authenticated on public.general_question_tracker;
 create policy general_question_tracker_delete_authenticated on public.general_question_tracker
-for delete using (auth.uid() is not null);
+for delete using (auth.uid() is not null and owner_account_id = auth.uid());
 
 -- ----------------------------------------------------------------------
 -- general_question_updates テーブル（一般質問の追跡更新履歴）
@@ -1339,22 +1347,63 @@ on public.general_question_updates (tracker_id, update_date desc);
 
 alter table public.general_question_updates enable row level security;
 
--- general_question_updates ポリシー（認証ユーザー全員が読み書き可）
+-- general_question_updates ポリシー（親案件の所有者のみ読み書き可）
 drop policy if exists general_question_updates_select_authenticated on public.general_question_updates;
 create policy general_question_updates_select_authenticated on public.general_question_updates
-for select using (auth.uid() is not null);
+for select using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
 
 drop policy if exists general_question_updates_insert_authenticated on public.general_question_updates;
 create policy general_question_updates_insert_authenticated on public.general_question_updates
-for insert with check (auth.uid() is not null);
+for insert with check (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
 
 drop policy if exists general_question_updates_update_authenticated on public.general_question_updates;
 create policy general_question_updates_update_authenticated on public.general_question_updates
-for update using (auth.uid() is not null);
+for update using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+)
+with check (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
 
 drop policy if exists general_question_updates_delete_authenticated on public.general_question_updates;
 create policy general_question_updates_delete_authenticated on public.general_question_updates
-for delete using (auth.uid() is not null);
+for delete using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
 
 -- PostgREST のスキーマキャッシュを明示的に再読込
 -- 追加テーブルが API 経由で見えない場合の保険

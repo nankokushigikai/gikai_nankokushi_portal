@@ -431,6 +431,23 @@
             return supabaseClient;
         }
 
+        function isUuid(value) {
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+        }
+
+        async function resolveAccountId() {
+            const supabase = getClient();
+            const { data, error } = await supabase.auth.getSession();
+            if (error) {
+                throw error;
+            }
+            const authUserId = data && data.session && data.session.user ? data.session.user.id : "";
+            if (isUuid(authUserId)) {
+                return authUserId;
+            }
+            throw new Error("認証ユーザーIDを取得できませんでした。再ログインしてください。");
+        }
+
         function escapeHtml(str) {
             return (str || "")
                 .replace(/&/g, "&amp;")
@@ -727,6 +744,7 @@
                         .eq("id", currentTrackerId));
                 } else {
                     payload.created_at = new Date().toISOString();
+                    payload.owner_account_id = await resolveAccountId();
                     ({ error } = await supabase
                         .from("general_question_tracker")
                         .insert(payload));
@@ -1125,8 +1143,9 @@ ${inputText}`;
             }
         }
 
-        function buildBulkPayload(row, common) {
+        function buildBulkPayload(row, common, accountId) {
             return {
+            owner_account_id: accountId,
                 session_id: common.session_id,
                 question_date: common.question_date || null,
                 member_name: row.member_name.trim(),
@@ -1192,7 +1211,8 @@ ${inputText}`;
                 }
             }
 
-            const payloads = selectedRows.map((row) => buildBulkPayload(row, common));
+            const accountId = await resolveAccountId();
+            const payloads = selectedRows.map((row) => buildBulkPayload(row, common, accountId));
             const saveBtn = document.getElementById("bulk-save-btn");
             saveBtn.disabled = true;
 

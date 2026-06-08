@@ -24,7 +24,6 @@ drop policy if exists general_question_material_select_own on public.general_que
 create policy general_question_material_select_own on public.general_question_material
 for select using (
     (auth.uid() is not null and auth.uid() = account_id)
-    or auth.role() = 'anon'
 );
 
 -- RLSポリシー: 認証ユーザーが自分のデータをINSERT可能
@@ -32,7 +31,6 @@ drop policy if exists general_question_material_insert_authenticated on public.g
 create policy general_question_material_insert_authenticated on public.general_question_material
 for insert with check (
     (auth.uid() is not null and auth.uid() = account_id)
-    or auth.role() = 'anon'
 );
 
 -- RLSポリシー: 認証ユーザーが自分のデータをUPDATE可能
@@ -40,10 +38,8 @@ drop policy if exists general_question_material_update_own on public.general_que
 create policy general_question_material_update_own on public.general_question_material
 for update using (
     (auth.uid() is not null and auth.uid() = account_id)
-    or auth.role() = 'anon'
 ) with check (
     (auth.uid() is not null and auth.uid() = account_id)
-    or auth.role() = 'anon'
 );
 
 -- RLSポリシー: 認証ユーザーが自分のデータをDELETE可能
@@ -51,5 +47,4 @@ drop policy if exists general_question_material_delete_own on public.general_que
 create policy general_question_material_delete_own on public.general_question_material
 for delete using (
     (auth.uid() is not null and auth.uid() = account_id)
-    or auth.role() = 'anon'
 );
