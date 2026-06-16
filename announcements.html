@@ -209,9 +209,10 @@
                         <p class="text-sm text-gray-500">メンバー読み込み中...</p>
                     </div>
                 </div>
-                <div class="md:col-span-2 flex gap-3 justify-end pt-2">
+                <div class="md:col-span-2 flex flex-wrap gap-3 justify-end pt-2">
                     <button type="button" id="announcement-edit-cancel" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
-                    <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">保存</button>
+                    <button type="button" id="announcement-edit-save-only" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">変更のみ保存</button>
+                    <button type="submit" id="announcement-edit-save-with-mail" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"><i class="fas fa-paper-plane mr-1"></i>変更を保存してメール送信</button>
                 </div>
             </form>
             <p id="announcement-edit-message" class="mt-3 text-sm text-gray-600"></p>
@@ -1291,8 +1292,11 @@
             document.getElementById("announcement-edit-modal").classList.remove("hidden");
         }
 
+        let editSendMail = false;
+
         async function saveAnnouncementEdit(event) {
             event.preventDefault();
+            const shouldSendMail = editSendMail;
 
             const noValue = Number(document.getElementById("edit_notice_no").value);
             const current = announcementByNo.get(noValue) || {};
@@ -1499,8 +1503,52 @@
                 });
             }
 
+            if (shouldSendMail && recipientEmails.length > 0) {
+                try {
+                    const dateLabel = payload.notice_date.replace(/-/g, "/");
+                    const portalTopUrl = (() => {
+                        const configuredBase = String((window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "").trim();
+                        if (configuredBase) return new URL("index.html", `${configuredBase.replace(/\/+$/, "")}/`).toString();
+                        return new URL("index.html", window.location.href).toString();
+                    })();
+                    const mailSubject = `【南国市議会DXポータル】お知らせ変更: ${payload.title}`;
+                    const mailBody = [
+                        `${currentOwnerName} さんがお知らせを変更しました。`,
+                        "",
+                        `【日時】${dateLabel} ${payload.start_time}〜${payload.end_time}`,
+                        `【タイトル】${payload.title}`,
+                        `【内容】${payload.content}`,
+                        payload.contact_phone ? `【連絡先電話】${payload.contact_phone}` : null,
+                        payload.contact_email ? `【連絡先メール】${payload.contact_email}` : null,
+                        payload.remarks ? `【備考】${payload.remarks}` : null,
+                        "",
+                        "【南国市議会ポータルサイト】",
+                        portalTopUrl,
+                        "",
+                        "このメールはシステムから自動送信されています。"
+                    ].filter(line => line !== null).join("\n");
+
+                    const { error: mailError } = await dbClient.functions.invoke("mail-notice-send", {
+                        body: { toEmails: recipientEmails, subject: mailSubject, body: mailBody, senderName: currentOwnerName }
+                    });
+
+                    if (mailError) {
+                        const detail = await extractFunctionErrorDetail(mailError);
+                        closeEditModal();
+                        document.getElementById("announcement-message").textContent = `修正しました（メール送信失敗: ${detail}）。`;
+                        await loadAnnouncements();
+                        return;
+                    }
+                } catch (mailEx) {
+                    closeEditModal();
+                    document.getElementById("announcement-message").textContent = `修正しました（メール送信エラー: ${mailEx.message}）。`;
+                    await loadAnnouncements();
+                    return;
+                }
+            }
+
             closeEditModal();
-            document.getElementById("announcement-message").textContent = "修正しました。";
+            document.getElementById("announcement-message").textContent = shouldSendMail ? "修正してメールを送信しました。" : "修正しました。";
             await loadAnnouncements();
         }
 
@@ -1991,6 +2039,14 @@
 
         document.getElementById("announcement-edit-form").addEventListener("submit", saveAnnouncementEdit);
         document.getElementById("announcement-edit-cancel").addEventListener("click", closeEditModal);
+        document.getElementById("announcement-edit-save-only").addEventListener("click", () => {
+            editSendMail = false;
+            document.getElementById("announcement-edit-form").requestSubmit();
+        });
+        document.getElementById("announcement-edit-save-with-mail").addEventListener("click", () => {
+            editSendMail = true;
+            document.getElementById("announcement-edit-form").requestSubmit();
+        });
         document.getElementById("announcement-edit-modal").addEventListener("click", (event) => {
             if (event.target && event.target.id === "announcement-edit-modal") {
                 closeEditModal();
