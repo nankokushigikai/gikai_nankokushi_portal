@@ -43,7 +43,12 @@
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700">タイトル</label>
-                    <input id="notice_title" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
+                    <div class="mt-1 flex gap-2">
+                        <input id="notice_title" list="title-master-datalist" required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
+                        <datalist id="title-master-datalist"></datalist>
+                        <button type="button" id="title-master-save-btn" class="flex-shrink-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">＋保存</button>
+                        <button type="button" id="title-master-manage-btn" class="flex-shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">⚙ 管理</button>
+                    </div>
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700">開始時間</label>
@@ -131,6 +136,26 @@
         </section>
     </main>
 
+    <!-- タイトルマスター管理モーダル -->
+    <div id="title-master-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold text-gray-800">タイトルマスター管理</h2>
+            </div>
+            <div class="flex gap-2 mb-3">
+                <input id="title-master-new-input" type="text" placeholder="新しいタイトルを入力" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <button type="button" id="title-master-add-btn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">追加</button>
+            </div>
+            <p id="title-master-modal-message" class="mb-3 text-xs text-gray-600"></p>
+            <ul id="title-master-list" class="space-y-2 max-h-80 overflow-y-auto">
+                <li class="text-sm text-gray-500">読み込み中...</li>
+            </ul>
+            <div class="mt-4 flex justify-end">
+                <button type="button" id="title-master-modal-close" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+            </div>
+        </div>
+    </div>
+
     <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
         &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
     </footer>
@@ -143,6 +168,7 @@
         let currentOwnerName = "";
         let currentUserEmail = "";
         let allMembers = [];
+        let allTitleMasters = [];
 
             function escapeHtml(value) {
                 return String(value || "")
@@ -765,6 +791,137 @@
             }
         }
 
+        // タイトルマスター関数群
+        async function loadTitleMasters() {
+            const { data } = await dbClient
+                .from("announcement_title_master")
+                .select("id,title,sort_order")
+                .order("sort_order", { ascending: true })
+                .order("id", { ascending: true });
+            allTitleMasters = data || [];
+            renderTitleMasterDatalist();
+            renderTitleMasterList();
+        }
+
+        function renderTitleMasterDatalist() {
+            const datalist = document.getElementById("title-master-datalist");
+            if (!datalist) return;
+            datalist.innerHTML = allTitleMasters.map((m) =>
+                `<option value="${escapeHtml(m.title)}">`
+            ).join("");
+        }
+
+        function renderTitleMasterList() {
+            const ul = document.getElementById("title-master-list");
+            if (!ul) return;
+            if (allTitleMasters.length === 0) {
+                ul.innerHTML = '<li class="text-sm text-gray-500">マスターにタイトルが登録されていません。</li>';
+                return;
+            }
+            ul.innerHTML = allTitleMasters.map((m) => `
+                <li class="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50" data-master-id="${m.id}">
+                    <span class="flex-1 text-sm text-gray-800 master-title-text">${escapeHtml(m.title)}</span>
+                    <input type="text" class="master-title-edit hidden flex-1 border border-gray-300 rounded px-2 py-1 text-sm" value="${escapeHtml(m.title)}">
+                    <button type="button" class="master-edit-btn text-xs px-2 py-1 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold">編集</button>
+                    <button type="button" class="master-save-btn hidden text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold">保存</button>
+                    <button type="button" class="master-cancel-btn hidden text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 hover:bg-gray-200 font-semibold">戻す</button>
+                    <button type="button" class="master-delete-btn text-xs px-2 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-semibold">削除</button>
+                </li>
+            `).join("");
+
+            ul.querySelectorAll("li[data-master-id]").forEach((li) => {
+                const id = Number(li.getAttribute("data-master-id"));
+                const textEl = li.querySelector(".master-title-text");
+                const editInput = li.querySelector(".master-title-edit");
+                const editBtn = li.querySelector(".master-edit-btn");
+                const saveBtn = li.querySelector(".master-save-btn");
+                const cancelBtn = li.querySelector(".master-cancel-btn");
+                const deleteBtn = li.querySelector(".master-delete-btn");
+
+                editBtn.addEventListener("click", () => {
+                    textEl.classList.add("hidden");
+                    editInput.classList.remove("hidden");
+                    editBtn.classList.add("hidden");
+                    saveBtn.classList.remove("hidden");
+                    cancelBtn.classList.remove("hidden");
+                    editInput.focus();
+                });
+
+                cancelBtn.addEventListener("click", () => {
+                    textEl.classList.remove("hidden");
+                    editInput.classList.add("hidden");
+                    editBtn.classList.remove("hidden");
+                    saveBtn.classList.add("hidden");
+                    cancelBtn.classList.add("hidden");
+                    editInput.value = textEl.textContent;
+                });
+
+                saveBtn.addEventListener("click", async () => {
+                    const newTitle = editInput.value.trim();
+                    if (!newTitle) { setTitleMasterMessage("タイトルを入力してください。", true); return; }
+                    const { error } = await dbClient.from("announcement_title_master").update({ title: newTitle, updated_at: new Date().toISOString() }).eq("id", id);
+                    if (error) { setTitleMasterMessage("更新失敗: " + error.message, true); return; }
+                    setTitleMasterMessage("更新しました。");
+                    await loadTitleMasters();
+                });
+
+                deleteBtn.addEventListener("click", async () => {
+                    if (!window.confirm("このタイトルをマスターから削除しますか？")) return;
+                    const { error } = await dbClient.from("announcement_title_master").delete().eq("id", id);
+                    if (error) { setTitleMasterMessage("削除失敗: " + error.message, true); return; }
+                    setTitleMasterMessage("削除しました。");
+                    await loadTitleMasters();
+                });
+            });
+        }
+
+        function setTitleMasterMessage(text, isError = false) {
+            const el = document.getElementById("title-master-modal-message");
+            if (!el) return;
+            el.textContent = text;
+            el.className = `mb-3 text-xs ${isError ? "text-rose-700" : "text-emerald-700"}`;
+        }
+
+        async function addTitleMasterFromInput() {
+            const input = document.getElementById("title-master-new-input");
+            const title = input.value.trim();
+            if (!title) { setTitleMasterMessage("タイトルを入力してください。", true); return; }
+            const { error } = await dbClient.from("announcement_title_master").insert({ title });
+            if (error) { setTitleMasterMessage("追加失敗: " + error.message, true); return; }
+            input.value = "";
+            setTitleMasterMessage("追加しました。");
+            await loadTitleMasters();
+        }
+
+        async function saveTitleFromField() {
+            const title = document.getElementById("notice_title").value.trim();
+            if (!title) { document.getElementById("announcement-message").textContent = "タイトルを入力してからマスターに保存してください。"; return; }
+            const exists = allTitleMasters.some((m) => m.title === title);
+            if (exists) { document.getElementById("announcement-message").textContent = "このタイトルはすでにマスターに登録されています。"; return; }
+            const { error } = await dbClient.from("announcement_title_master").insert({ title });
+            if (error) { document.getElementById("announcement-message").textContent = "マスター保存失敗: " + error.message; return; }
+            document.getElementById("announcement-message").textContent = "タイトルをマスターに保存しました。";
+            await loadTitleMasters();
+        }
+
+        document.getElementById("title-master-save-btn").addEventListener("click", saveTitleFromField);
+        document.getElementById("title-master-manage-btn").addEventListener("click", () => {
+            setTitleMasterMessage("");
+            document.getElementById("title-master-modal").classList.remove("hidden");
+        });
+        document.getElementById("title-master-modal-close").addEventListener("click", () => {
+            document.getElementById("title-master-modal").classList.add("hidden");
+        });
+        document.getElementById("title-master-modal").addEventListener("click", (e) => {
+            if (e.target && e.target.id === "title-master-modal") {
+                document.getElementById("title-master-modal").classList.add("hidden");
+            }
+        });
+        document.getElementById("title-master-add-btn").addEventListener("click", addTitleMasterFromInput);
+        document.getElementById("title-master-new-input").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); addTitleMasterFromInput(); }
+        });
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -777,6 +934,7 @@
                 currentUserEmail = (session && session.email) || (profile && profile.email) || "";
                 document.getElementById("owner_name_display").value = currentOwnerName;
                 await loadMembers();
+                await loadTitleMasters();
                 await loadRecentAnnouncements();
             }
         });
