@@ -150,11 +150,10 @@
     <!-- お知らせ詳細モーダル -->
     <div id="announcement-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
+            <div class="mb-4">
                 <h2 id="announcement-detail-title" class="text-lg font-bold text-gray-800">お知らせ詳細</h2>
-                <button id="announcement-detail-close" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
             </div>
-            <div class="mb-2 text-sm text-gray-600">
+            <div class="mb-2 text-lg font-bold text-gray-800">
                 <span id="announcement-detail-date"></span>
                 <span id="announcement-detail-time" class="ml-4"></span>
             </div>
@@ -164,6 +163,9 @@
                 <button id="announcement-detail-calendar-link" type="button" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg text-sm font-semibold">Googleカレンダーへ登録/更新</button>
             </div>
             <p id="announcement-detail-message" class="mt-2 text-xs text-gray-600"></p>
+            <div class="mt-4 flex justify-end">
+                <button id="announcement-detail-close" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">閉じる</button>
+            </div>
         </div>
     </div>
     </main>
