@@ -750,18 +750,10 @@
                 const li = document.createElement("li");
                 li.className = "text-gray-700 bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-rose-50 transition";
 
-                // 詳細モーダル表示イベント
                 li.addEventListener("click", (e) => {
-                    // カレンダー連携や出欠ボタンのクリックは除外
                     if (e.target.closest("button")) return;
                     showAnnouncementDetailModal(item);
                 });
-
-                const topRow = document.createElement("div");
-                topRow.className = "flex items-center gap-2 min-w-0";
-
-                const dot = document.createElement("span");
-                dot.className = `inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[index % dotColors.length]}`;
 
                 const lifecycle = String(item.lifecycle_status || "active");
                 const isCanceled = lifecycle === "canceled";
@@ -770,13 +762,21 @@
                 const linkedVersion = Number(personalLink && personalLink.last_synced_version ? personalLink.last_synced_version : 0);
                 const needsUpdate = !!(personalLink && linkedVersion > 0 && linkedVersion < currentVersion && !isCanceled);
                 const needsCancelDelete = !!(isCanceled && personalLink && personalLink.google_event_id && personalLink.sync_status !== "canceled_synced");
+
+                // ① 日付 + 時間 + Googleカレンダー連携ボタン
+                const row1 = document.createElement("div");
+                row1.className = "flex items-center gap-2 min-w-0";
+
+                const dot = document.createElement("span");
+                dot.className = `inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[index % dotColors.length]}`;
+
                 const date = document.createElement("span");
                 date.className = "text-xs font-semibold text-gray-700 whitespace-nowrap flex-shrink-0";
                 date.textContent = formatAnnouncementDate(item.notice_date);
 
                 const time = document.createElement("span");
-                time.className = "text-xs font-semibold text-gray-700 whitespace-nowrap flex-shrink-0";
-                time.textContent = `${item.start_time ? String(item.start_time).slice(0, 5) : "--:--"}-${item.end_time ? String(item.end_time).slice(0, 5) : "--:--"}`;
+                time.className = "text-xs text-gray-500 whitespace-nowrap flex-shrink-0";
+                time.textContent = `${item.start_time ? String(item.start_time).slice(0, 5) : "--:--"} ～ ${item.end_time ? String(item.end_time).slice(0, 5) : "--:--"}`;
 
                 const calendarBtn = document.createElement("button");
                 calendarBtn.type = "button";
@@ -797,30 +797,17 @@
                     await onCalendarLink(item);
                 });
 
-                const text = document.createElement("span");
-                text.className = "flex-1 min-w-0 truncate text-gray-800";
+                row1.appendChild(dot);
+                row1.appendChild(date);
+                row1.appendChild(time);
+                row1.appendChild(calendarBtn);
+                li.appendChild(row1);
 
-                const titleText = document.createElement("span");
-                titleText.className = "font-semibold";
-                titleText.textContent = item.title || "";
-                text.appendChild(titleText);
-
-                if (item.content) {
-                    const contentText = document.createElement("span");
-                    contentText.textContent = ` / ${item.content}`;
-                    text.appendChild(contentText);
-                }
-
-                if (isCanceled) {
-                    text.classList.add("line-through", "text-gray-500");
-                }
-
-                topRow.appendChild(dot);
-                topRow.appendChild(date);
-                topRow.appendChild(time);
-                topRow.appendChild(calendarBtn);
-                topRow.appendChild(text);
-                li.appendChild(topRow);
+                // ② タイトル
+                const row2 = document.createElement("div");
+                row2.className = "mt-1 text-sm font-semibold text-gray-800" + (isCanceled ? " line-through text-gray-500" : "");
+                row2.textContent = item.title || "";
+                li.appendChild(row2);
 
                 if (needsUpdate) {
                     const updateNote = document.createElement("p");
@@ -843,35 +830,23 @@
                         li.className = "text-gray-700 bg-rose-50 border border-rose-200 rounded-lg p-2 cursor-pointer hover:bg-rose-100 transition";
                     }
 
-                    const meta = document.createElement("p");
-                    meta.className = "text-xs text-gray-600 mt-2";
-                    meta.textContent = `回答期限: ${formatAnnouncementDateTime(item.attendance_deadline)}`;
-                    li.appendChild(meta);
+                    // ③ 回答期限
+                    const row3 = document.createElement("p");
+                    row3.className = "mt-1 text-xs text-gray-600";
+                    row3.textContent = `回答期限: ${formatAnnouncementDateTime(item.attendance_deadline)}`;
+                    li.appendChild(row3);
 
-                    if (myStatus === "unanswered") {
-                        const requiredNote = document.createElement("p");
-                        requiredNote.className = "mt-1 text-xs font-semibold text-rose-700";
-                        requiredNote.textContent = "このお知らせは回答必須です（未回答）";
-                        li.appendChild(requiredNote);
-                    }
+                    // ④ 出席 : 欠席 : 未定 : 回答 = [自分の回答]
+                    const row4 = document.createElement("div");
+                    row4.className = "mt-1 flex items-center gap-1 flex-wrap";
 
-                    const statusWrap = document.createElement("p");
-                    statusWrap.className = "mt-1";
-                    const badge = document.createElement("span");
-                    badge.className = `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${attendanceStatusBadgeClass(myStatus)}`;
-                    badge.textContent = `自分の回答: ${attendanceStatusLabel(myStatus)}`;
-                    statusWrap.appendChild(badge);
-                    li.appendChild(statusWrap);
-
-                    const buttonRow = document.createElement("div");
-                    buttonRow.className = "mt-2 flex flex-wrap gap-1";
-                    const options = [
+                    const attendOptions = [
                         { status: "attend", label: "出席", cls: "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" },
                         { status: "absent", label: "欠席", cls: "bg-rose-100 text-rose-700 hover:bg-rose-200" },
                         { status: "pending", label: "未定", cls: "bg-amber-100 text-amber-700 hover:bg-amber-200" }
                     ];
 
-                    options.forEach((option) => {
+                    attendOptions.forEach((option, i) => {
                         const btn = document.createElement("button");
                         btn.type = "button";
                         btn.className = `text-xs px-2 py-1 rounded ${option.cls}`;
@@ -882,10 +857,26 @@
                             if (typeof onRespond !== "function") return;
                             await onRespond(noValue, option.status);
                         });
-                        buttonRow.appendChild(btn);
+                        row4.appendChild(btn);
+                        if (i < attendOptions.length - 1) {
+                            const sep = document.createElement("span");
+                            sep.className = "text-xs text-gray-400";
+                            sep.textContent = ":";
+                            row4.appendChild(sep);
+                        }
                     });
 
-                    li.appendChild(buttonRow);
+                    const sepAnswer = document.createElement("span");
+                    sepAnswer.className = "text-xs text-gray-400 mx-1";
+                    sepAnswer.textContent = ": 回答 =";
+                    row4.appendChild(sepAnswer);
+
+                    const answerBadge = document.createElement("span");
+                    answerBadge.className = `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${attendanceStatusBadgeClass(myStatus)}`;
+                    answerBadge.textContent = attendanceStatusLabel(myStatus);
+                    row4.appendChild(answerBadge);
+
+                    li.appendChild(row4);
                 }
 
                 list.appendChild(li);
