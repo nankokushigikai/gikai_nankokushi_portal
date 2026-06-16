@@ -34,7 +34,7 @@
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-rose-500">
             <h1 class="text-2xl font-bold mb-2 text-gray-700">お知らせ一覧</h1>
-            <p class="text-sm text-gray-600 mb-4">過去のお知らせを含めて、新しい順に表示します。</p>
+            <p class="text-sm text-gray-600 mb-4">今日以降を日付順に表示し、その後に過去のお知らせを新しい順に表示します。</p>
 
             <div id="google-unlinked-only-wrap" class="mb-3 hidden">
                 <label class="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -1552,9 +1552,9 @@
             const { data, error } = await dbClient
                 .from("announcements")
                 .select(enhancedBaseSelect)
-                .order("notice_date", { ascending: false })
-                .order("start_time", { ascending: false })
-                .order("no", { ascending: false });
+                .order("notice_date", { ascending: true })
+                .order("start_time", { ascending: true, nullsFirst: false })
+                .order("no", { ascending: true });
 
             if (error) {
                 message.textContent = "一覧読込失敗: " + error.message;
@@ -1666,7 +1666,26 @@
                 }
             }
 
-            visibleRows.forEach((item) => {
+            const today = new Date().toISOString().slice(0, 10);
+            const futureRows = visibleRows.filter((item) => String(item.notice_date || "") >= today);
+            const pastRows = visibleRows
+                .filter((item) => String(item.notice_date || "") < today)
+                .reverse();
+            const orderedRows = [...futureRows, null, ...pastRows]; // null = 区切り線
+
+            orderedRows.forEach((item) => {
+                if (item === null) {
+                    if (pastRows.length === 0) return;
+                    const divider = document.createElement("div");
+                    divider.className = "col-span-full flex items-center gap-3 my-2";
+                    divider.innerHTML = `
+                        <hr class="flex-1 border-gray-300">
+                        <span class="text-xs font-semibold text-gray-400 whitespace-nowrap">── 過去のお知らせ ──</span>
+                        <hr class="flex-1 border-gray-300">
+                    `;
+                    list.appendChild(divider);
+                    return;
+                }
                 announcementByNo.set(Number(item.no), item);
                 const card = document.createElement("article");
                 card.className = "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition";
