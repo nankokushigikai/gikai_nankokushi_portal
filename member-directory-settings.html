@@ -101,7 +101,8 @@
                     <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">区分 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
                     <select id="category" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                         <option value="議員">議員</option>
-                        <option value="職員">職員</option>
+                        <option value="議会職員">議会職員</option>
+                        <option value="市職員">市職員</option>
                     </select>
                 </div>
                 <div>
@@ -111,7 +112,8 @@
                         <option value="議長">議長</option>
                         <option value="副議長">副議長</option>
                     </select>
-                    <p class="text-xs text-gray-500 mt-1">区分に応じて選択肢が切り替わります。</p>
+                    <input id="position_name_text" type="text" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm hidden" placeholder="例: 財政課長・企画課長（兼務の場合は・で区切る）">
+                    <p class="text-xs text-gray-500 mt-1" id="position_name_hint">区分に応じて選択肢が切り替わります。</p>
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">Gmailアドレス <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">必須</span></label>
@@ -326,7 +328,9 @@
         const GEMINI_MODEL = "gemini-2.5-flash";
         const POSITION_OPTIONS = {
             "議員": ["未", "議長", "副議長"],
-            "職員": ["未", "局長", "副局長"]
+            "議会職員": ["未", "局長", "副局長"],
+            "職員": ["未", "局長", "副局長"],  // 旧データ互換
+            "市職員": null  // 自由テキスト
         };
         const LEGACY_POSITION_MAP = {
             "事務局長": "局長",
@@ -417,8 +421,9 @@
         function categorySortValue(item) {
             const category = String((item && item.category) || "").trim();
             if (category === "議員") return 1;
-            if (category === "職員") return 2;
-            return 3;
+            if (category === "職員" || category === "議会職員") return 2;
+            if (category === "市職員") return 3;
+            return 4;
         }
 
         function compareMembersBySeat(a, b) {
@@ -824,12 +829,24 @@
 
         function renderPositionOptions(category, selectedValue = "未") {
             const positionSelect = document.getElementById("position_name");
-            const options = POSITION_OPTIONS[category] || POSITION_OPTIONS["議員"];
-            const normalizedValue = normalizePosition(category, selectedValue);
+            const positionText = document.getElementById("position_name_text");
+            const hint = document.getElementById("position_name_hint");
 
-            positionSelect.innerHTML = options
-                .map((value) => `<option value="${value}" ${value === normalizedValue ? "selected" : ""}>${value}</option>`)
-                .join("");
+            if (category === "市職員") {
+                positionSelect.classList.add("hidden");
+                positionText.classList.remove("hidden");
+                positionText.value = (selectedValue && selectedValue !== "未") ? selectedValue : "";
+                if (hint) hint.textContent = "役職を自由入力してください。兼務の場合は「・」で区切って入力できます。";
+            } else {
+                positionSelect.classList.remove("hidden");
+                positionText.classList.add("hidden");
+                const options = POSITION_OPTIONS[category] || POSITION_OPTIONS["議員"];
+                const normalizedValue = normalizePosition(category, selectedValue);
+                positionSelect.innerHTML = options
+                    .map((value) => `<option value="${value}" ${value === normalizedValue ? "selected" : ""}>${value}</option>`)
+                    .join("");
+                if (hint) hint.textContent = "区分に応じて選択肢が切り替わります。";
+            }
         }
 
         async function getNextMemberId() {
@@ -871,6 +888,7 @@
             document.getElementById("access_role").value = "使用者";
             document.getElementById("category").value = "議員";
             renderPositionOptions("議員", "未");
+            document.getElementById("position_name_text").value = "";
             document.getElementById("gemini_api_key").value = "";
             resetPhotoState();
         }
@@ -898,9 +916,10 @@
             document.getElementById("address").value = item.address || "";
             document.getElementById("phone").value = item.phone || "";
             document.getElementById("mobile").value = item.mobile || "";
-            document.getElementById("category").value = item.category || "議員";
+            const categoryValue = item.category === "職員" ? "議会職員" : (item.category || "議員");
+            document.getElementById("category").value = categoryValue;
             document.getElementById("access_role").value = item.access_role || "使用者";
-            renderPositionOptions(item.category || "議員", item.position_name || "未");
+            renderPositionOptions(categoryValue, item.position_name || "未");
             document.getElementById("email").value = item.email || "";
             document.getElementById("committee").value = normalizeCommitteeName(item.committee);
             document.getElementById("committee_role").value = item.committee_role || "";
@@ -1021,7 +1040,9 @@
             const currentMemberId = document.getElementById("member_id").value.trim();
             const isUpdate = !!currentMemberId;
             const category = document.getElementById("category").value;
-            const positionName = normalizePosition(category, document.getElementById("position_name").value);
+            const positionName = category === "市職員"
+                ? (document.getElementById("position_name_text").value.trim() || "未")
+                : normalizePosition(category, document.getElementById("position_name").value);
             const accessRole = document.getElementById("access_role").value;
             const isGiun = document.getElementById("is_giun").value === "true";
             const isEditorialCommittee = document.getElementById("is_editorial_committee").value === "true";
