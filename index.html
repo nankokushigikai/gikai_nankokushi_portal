@@ -998,6 +998,14 @@
                 });
 
                 row1.appendChild(dot);
+
+                if (item.notice_date === getTodayDateString()) {
+                    const todayBadge = document.createElement("span");
+                    todayBadge.className = "inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-rose-500 text-white flex-shrink-0";
+                    todayBadge.textContent = "今日";
+                    row1.appendChild(todayBadge);
+                }
+
                 row1.appendChild(date);
                 row1.appendChild(time);
                 row1.appendChild(calendarBtn);
