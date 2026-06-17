@@ -1355,17 +1355,60 @@
                 return;
             }
             list.innerHTML = data.map(row => `
-                <li class="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
-                    <span>${escapeHtml(row.kaiha_name)}</span>
-                    <button type="button" class="text-rose-600 hover:text-rose-800 text-xs font-semibold kaiha-delete-btn" data-id="${row.id}">削除</button>
+                <li class="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50" data-id="${row.id}">
+                    <span class="kaiha-label flex-1">${escapeHtml(row.kaiha_name)}</span>
+                    <input class="kaiha-edit-input flex-1 border border-gray-300 rounded px-2 py-1 text-sm hidden" value="${escapeHtml(row.kaiha_name)}">
+                    <button type="button" class="kaiha-edit-btn text-indigo-600 hover:text-indigo-800 text-xs font-semibold">変更</button>
+                    <button type="button" class="kaiha-save-btn text-emerald-600 hover:text-emerald-800 text-xs font-semibold hidden">保存</button>
+                    <button type="button" class="kaiha-cancel-btn text-gray-500 hover:text-gray-700 text-xs font-semibold hidden">取消</button>
+                    <button type="button" class="kaiha-delete-btn text-rose-600 hover:text-rose-800 text-xs font-semibold">削除</button>
                 </li>
             `).join("");
 
-            list.querySelectorAll(".kaiha-delete-btn").forEach(btn => {
-                btn.addEventListener("click", async () => {
-                    if (!confirm(`「${btn.closest("li").querySelector("span").textContent}」を削除しますか？`)) return;
-                    const { error: delErr } = await dbClient.from("kaiha_master").delete().eq("id", btn.dataset.id);
-                    const msg = document.getElementById("kaiha-master-message");
+            list.querySelectorAll("li").forEach(li => {
+                const id = li.dataset.id;
+                const label = li.querySelector(".kaiha-label");
+                const input = li.querySelector(".kaiha-edit-input");
+                const editBtn = li.querySelector(".kaiha-edit-btn");
+                const saveBtn = li.querySelector(".kaiha-save-btn");
+                const cancelBtn = li.querySelector(".kaiha-cancel-btn");
+                const deleteBtn = li.querySelector(".kaiha-delete-btn");
+                const msg = document.getElementById("kaiha-master-message");
+
+                editBtn.addEventListener("click", () => {
+                    label.classList.add("hidden");
+                    input.classList.remove("hidden");
+                    editBtn.classList.add("hidden");
+                    saveBtn.classList.remove("hidden");
+                    cancelBtn.classList.remove("hidden");
+                    input.focus();
+                });
+
+                cancelBtn.addEventListener("click", () => {
+                    input.value = label.textContent;
+                    label.classList.remove("hidden");
+                    input.classList.add("hidden");
+                    editBtn.classList.remove("hidden");
+                    saveBtn.classList.add("hidden");
+                    cancelBtn.classList.add("hidden");
+                });
+
+                saveBtn.addEventListener("click", async () => {
+                    const newName = input.value.trim();
+                    if (!newName) { msg.textContent = "会派名を入力してください。"; msg.classList.remove("hidden"); return; }
+                    const { error: updErr } = await dbClient.from("kaiha_master").update({ kaiha_name: newName }).eq("id", id);
+                    if (updErr) {
+                        msg.textContent = "変更失敗: " + updErr.message;
+                        msg.classList.remove("hidden");
+                    } else {
+                        msg.classList.add("hidden");
+                        await loadKaihaMaster();
+                    }
+                });
+
+                deleteBtn.addEventListener("click", async () => {
+                    if (!confirm(`「${label.textContent}」を削除しますか？`)) return;
+                    const { error: delErr } = await dbClient.from("kaiha_master").delete().eq("id", id);
                     if (delErr) {
                         msg.textContent = "削除失敗: " + delErr.message;
                         msg.classList.remove("hidden");
