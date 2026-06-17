@@ -308,6 +308,7 @@ create table if not exists public.committee_activity_recipients (
 );
 
 -- 既存テーブル向けカラム追加（CREATE TABLE IF NOT EXISTS では既存テーブルには反映されないため）
+alter table public.member_directory add column if not exists kaiha text;
 alter table public.announcements add column if not exists visibility text not null default 'all' check (visibility in ('all', 'specific'));
 alter table public.announcements add column if not exists attendance_required boolean not null default false;
 alter table public.announcements add column if not exists attendance_deadline timestamptz;

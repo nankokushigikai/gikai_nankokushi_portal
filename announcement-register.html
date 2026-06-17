@@ -268,7 +268,7 @@
         async function loadMembers() {
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("email, full_name, seat_number, category, position_name, committee, is_giun, is_editorial_committee")
+                .select("email, full_name, seat_number, category, position_name, committee, is_giun, is_editorial_committee, kaiha")
                 .eq("is_current", true)
                 .order("seat_number", { ascending: true, nullsFirst: false })
                 .order("full_name", { ascending: true });
@@ -340,6 +340,12 @@
             }
             if (groupId === "editorial") {
                 return Boolean(member.is_editorial_committee);
+            }
+            if (groupId === "kaiha_none") {
+                return !member.kaiha;
+            }
+            if (groupId.startsWith("kaiha:")) {
+                return member.kaiha === groupId.slice(6);
             }
 
             return false;
@@ -521,13 +527,37 @@
 
         function renderGroupList() {
             const container = document.getElementById("member-group-list");
-            container.innerHTML = MEMBER_GROUPS.map((group) => `
+
+            // 固定グループ
+            const fixedHtml = MEMBER_GROUPS.map((group) => `
                 <label class="inline-flex items-center gap-2 p-2 mr-3 mb-2 hover:bg-white rounded cursor-pointer">
                     <input type="checkbox" value="${group.id}" class="member-group-checkbox w-4 h-4">
                     <span class="text-sm">${group.label}</span>
                 </label>
             `).join("");
 
+            // 会派グループ（allMembersのkaihaから動的生成）
+            const kaihaSet = [...new Set(allMembers.map(m => m.kaiha).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+            const hasNoKaiha = allMembers.some(m => !m.kaiha);
+            const kaihaHtml = kaihaSet.length === 0 && !hasNoKaiha ? "" : `
+                <div class="w-full border-t border-gray-200 mt-2 pt-2">
+                    <span class="text-xs text-gray-500 mr-2">会派：</span>
+                    ${kaihaSet.map(k => `
+                        <label class="inline-flex items-center gap-2 p-2 mr-3 mb-2 hover:bg-white rounded cursor-pointer">
+                            <input type="checkbox" value="kaiha:${k}" class="member-group-checkbox w-4 h-4">
+                            <span class="text-sm">${k}</span>
+                        </label>
+                    `).join("")}
+                    ${hasNoKaiha ? `
+                        <label class="inline-flex items-center gap-2 p-2 mr-3 mb-2 hover:bg-white rounded cursor-pointer">
+                            <input type="checkbox" value="kaiha_none" class="member-group-checkbox w-4 h-4">
+                            <span class="text-sm">会派なし</span>
+                        </label>
+                    ` : ""}
+                </div>
+            `;
+
+            container.innerHTML = fixedHtml + kaihaHtml;
             container.querySelectorAll(".member-group-checkbox").forEach((checkbox) => {
                 checkbox.addEventListener("change", applyGroupSelectionToMembers);
             });
