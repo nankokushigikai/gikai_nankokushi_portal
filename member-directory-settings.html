@@ -122,7 +122,9 @@
                 <div class="hidden md:block"></div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">会派 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
-                    <input id="kaiha" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 南国市政会（未所属は空欄）">
+                    <select id="kaiha" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="">未所属</option>
+                    </select>
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">委員会 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
@@ -237,6 +239,7 @@
                             <th class="text-left p-2 border">権限</th>
                             <th class="text-left p-2 border">区分</th>
                             <th class="text-left p-2 border">役職</th>
+                            <th class="text-left p-2 border">会派</th>
                             <th class="text-left p-2 border">委員会</th>
                             <th class="text-left p-2 border">議運メンバー</th>
                             <th class="text-left p-2 border">議運役職</th>
@@ -278,6 +281,18 @@
                     </ul>
                 </div>
             </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500 mt-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">会派マスター管理</h2>
+            <div class="flex gap-2 mb-4">
+                <input id="kaiha-master-input" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="会派名を入力（例: 南国市政会）">
+                <button type="button" id="kaiha-master-add-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">追加</button>
+            </div>
+            <ul id="kaiha-master-list" class="space-y-2 text-sm text-gray-700">
+                <li class="text-gray-400">読み込み中...</li>
+            </ul>
+            <p id="kaiha-master-message" class="mt-2 text-sm text-red-600 hidden"></p>
         </section>
     </main>
 
@@ -982,6 +997,7 @@
                     <td class="p-2 border">${item.access_role || "使用者"}</td>
                     <td class="p-2 border">${item.category || ""}</td>
                     <td class="p-2 border">${item.position_name || ""}</td>
+                    <td class="p-2 border">${item.kaiha || ""}</td>
                     <td class="p-2 border">${item.committee || ""}</td>
                     <td class="p-2 border">${toYesNo(item.is_giun)}</td>
                     <td class="p-2 border">${item.giun_role || ""}</td>
@@ -1307,6 +1323,79 @@
             renderPositionOptions(event.target.value, "未");
         });
 
+        // --- 会派マスター ---
+        async function loadKaihaMaster() {
+            const { data, error } = await dbClient
+                .from("kaiha_master")
+                .select("id, kaiha_name, sort_order")
+                .order("sort_order", { ascending: true })
+                .order("kaiha_name", { ascending: true });
+
+            if (error) {
+                console.error("会派マスター読込失敗:", error);
+                return;
+            }
+
+            // セレクト更新
+            const sel = document.getElementById("kaiha");
+            const current = sel.value;
+            sel.innerHTML = '<option value="">未所属</option>';
+            (data || []).forEach(row => {
+                const opt = document.createElement("option");
+                opt.value = row.kaiha_name;
+                opt.textContent = row.kaiha_name;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+
+            // マスター一覧更新
+            const list = document.getElementById("kaiha-master-list");
+            if (!data || data.length === 0) {
+                list.innerHTML = '<li class="text-gray-400">会派が登録されていません。</li>';
+                return;
+            }
+            list.innerHTML = data.map(row => `
+                <li class="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+                    <span>${escapeHtml(row.kaiha_name)}</span>
+                    <button type="button" class="text-rose-600 hover:text-rose-800 text-xs font-semibold kaiha-delete-btn" data-id="${row.id}">削除</button>
+                </li>
+            `).join("");
+
+            list.querySelectorAll(".kaiha-delete-btn").forEach(btn => {
+                btn.addEventListener("click", async () => {
+                    if (!confirm(`「${btn.closest("li").querySelector("span").textContent}」を削除しますか？`)) return;
+                    const { error: delErr } = await dbClient.from("kaiha_master").delete().eq("id", btn.dataset.id);
+                    const msg = document.getElementById("kaiha-master-message");
+                    if (delErr) {
+                        msg.textContent = "削除失敗: " + delErr.message;
+                        msg.classList.remove("hidden");
+                    } else {
+                        msg.classList.add("hidden");
+                        await loadKaihaMaster();
+                    }
+                });
+            });
+        }
+
+        document.getElementById("kaiha-master-add-btn").addEventListener("click", async () => {
+            const name = document.getElementById("kaiha-master-input").value.trim();
+            const msg = document.getElementById("kaiha-master-message");
+            if (!name) {
+                msg.textContent = "会派名を入力してください。";
+                msg.classList.remove("hidden");
+                return;
+            }
+            const { error } = await dbClient.from("kaiha_master").insert({ kaiha_name: name });
+            if (error) {
+                msg.textContent = "追加失敗: " + error.message;
+                msg.classList.remove("hidden");
+            } else {
+                msg.classList.add("hidden");
+                document.getElementById("kaiha-master-input").value = "";
+                await loadKaihaMaster();
+            }
+        });
+
         portalAuth.init({
             requireAuth: true,
             minRole: "admin",
@@ -1315,7 +1404,7 @@
             onReady: async ({ client }) => {
                 dbClient = client;
                 clearForm();
-                await loadMembers();
+                await Promise.all([loadMembers(), loadKaihaMaster()]);
             }
         });
     </script>
