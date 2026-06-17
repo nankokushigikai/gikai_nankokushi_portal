@@ -284,15 +284,18 @@
         </section>
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-emerald-500 mt-6">
-            <h2 class="text-xl font-bold mb-4 text-gray-700">会派マスター管理</h2>
-            <div class="flex gap-2 mb-4">
-                <input id="kaiha-master-input" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="会派名を入力（例: 南国市政会）">
-                <button type="button" id="kaiha-master-add-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">追加</button>
+            <button type="button" id="kaiha-master-toggle" class="flex items-center justify-between w-full text-left">
+                <h2 class="text-xl font-bold text-gray-700">会派マスター管理</h2>
+                <span id="kaiha-master-toggle-icon" class="text-gray-400 text-lg">▼</span>
+            </button>
+            <div id="kaiha-master-body" class="hidden mt-4">
+                <div class="flex gap-2 mb-4">
+                    <input id="kaiha-master-input" class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="会派名を入力（例: 南国市政会）">
+                    <button type="button" id="kaiha-master-add-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">追加</button>
+                </div>
+                <ul id="kaiha-master-list" class="space-y-2 text-sm text-gray-700"></ul>
+                <p id="kaiha-master-message" class="mt-2 text-sm text-red-600 hidden"></p>
             </div>
-            <ul id="kaiha-master-list" class="space-y-2 text-sm text-gray-700">
-                <li class="text-gray-400">読み込み中...</li>
-            </ul>
-            <p id="kaiha-master-message" class="mt-2 text-sm text-red-600 hidden"></p>
         </section>
     </main>
 
@@ -1420,6 +1423,18 @@
             });
         }
 
+        let kaihaMasterLoaded = false;
+        document.getElementById("kaiha-master-toggle").addEventListener("click", async () => {
+            const body = document.getElementById("kaiha-master-body");
+            const icon = document.getElementById("kaiha-master-toggle-icon");
+            const isHidden = body.classList.toggle("hidden");
+            icon.textContent = isHidden ? "▼" : "▲";
+            if (!isHidden && !kaihaMasterLoaded) {
+                kaihaMasterLoaded = true;
+                await loadKaihaMaster();
+            }
+        });
+
         document.getElementById("kaiha-master-add-btn").addEventListener("click", async () => {
             const name = document.getElementById("kaiha-master-input").value.trim();
             const msg = document.getElementById("kaiha-master-message");
@@ -1447,7 +1462,7 @@
             onReady: async ({ client }) => {
                 dbClient = client;
                 clearForm();
-                await Promise.all([loadMembers(), loadKaihaMaster()]);
+                await loadMembers();
             }
         });
     </script>
