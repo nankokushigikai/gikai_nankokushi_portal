@@ -121,6 +121,10 @@
                 </div>
                 <div class="hidden md:block"></div>
                 <div>
+                    <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">会派 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
+                    <input id="kaiha" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 南国市政会（未所属は空欄）">
+                </div>
+                <div>
                     <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">委員会 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
                     <select id="committee" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                         <option value="">未設定</option>
@@ -927,6 +931,7 @@
             document.getElementById("giun_role").value = normalizeMemberRole(item.giun_role || item.committee_role);
             document.getElementById("is_editorial_committee").value = item.is_editorial_committee ? "true" : "false";
             document.getElementById("editorial_role").value = normalizeMemberRole(item.editorial_role || item.committee_role);
+            document.getElementById("kaiha").value = item.kaiha || "";
             document.getElementById("notes").value = item.notes || "";
             setPhotoPreviewFromExistingPath(item.photo_path || "");
 
@@ -947,7 +952,7 @@
         async function loadMembers() {
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("member_id,full_name,photo_path,furigana,seat_number,is_current,access_role,category,position_name,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role")
+                .select("member_id,full_name,photo_path,furigana,seat_number,is_current,access_role,category,position_name,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role,kaiha")
                 .order("member_id", { ascending: true });
 
             const tbody = document.getElementById("member-list");
@@ -1070,6 +1075,7 @@
                 is_editorial_committee: isEditorialCommittee,
                 editorial_role: editorialRole,
                 photo_path: currentPhotoPath || null,
+                kaiha: document.getElementById("kaiha").value.trim() || null,
                 notes: document.getElementById("notes").value.trim() || null,
                 updated_at: new Date().toISOString()
             };
