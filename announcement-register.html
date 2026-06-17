@@ -38,10 +38,6 @@
 
             <form id="announcement-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="text-sm font-semibold text-gray-700">日付</label>
-                    <input id="notice_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
                     <label class="text-sm font-semibold text-gray-700">タイトル</label>
                     <div class="mt-1 flex gap-2">
                         <input id="notice_title" list="title-master-datalist" required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
@@ -49,6 +45,10 @@
                         <button type="button" id="title-master-save-btn" class="flex-shrink-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">＋保存</button>
                         <button type="button" id="title-master-manage-btn" class="flex-shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">⚙ 管理</button>
                     </div>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">日付</label>
+                    <input id="notice_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700">開始時間</label>
