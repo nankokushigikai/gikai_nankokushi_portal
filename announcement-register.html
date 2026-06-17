@@ -52,11 +52,41 @@
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700">開始時間</label>
-                    <input id="start_time" type="time" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <div class="mt-1 flex items-center gap-1">
+                        <select id="start_time_h" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                            <option value="">--</option>
+                            <script>for(let h=0;h<24;h++)document.write(`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`);</script>
+                        </select>
+                        <span class="text-sm">時</span>
+                        <select id="start_time_m" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                            <option value="">--</option>
+                            <option value="00">00</option>
+                            <option value="15">15</option>
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                        </select>
+                        <span class="text-sm">分</span>
+                    </div>
+                    <input type="hidden" id="start_time">
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700">終了時間</label>
-                    <input id="end_time" type="time" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <div class="mt-1 flex items-center gap-1">
+                        <select id="end_time_h" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                            <option value="">--</option>
+                            <script>for(let h=0;h<24;h++)document.write(`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`);</script>
+                        </select>
+                        <span class="text-sm">時</span>
+                        <select id="end_time_m" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                            <option value="">--</option>
+                            <option value="00">00</option>
+                            <option value="15">15</option>
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                        </select>
+                        <span class="text-sm">分</span>
+                    </div>
+                    <input type="hidden" id="end_time">
                 </div>
                 <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700">内容</label>
@@ -510,6 +540,18 @@
 
         async function saveAnnouncement(event) {
             event.preventDefault();
+
+            // 時・分セレクトからhidden inputを組み立て
+            const sh = document.getElementById("start_time_h").value;
+            const sm = document.getElementById("start_time_m").value;
+            const eh = document.getElementById("end_time_h").value;
+            const em = document.getElementById("end_time_m").value;
+            if (!sh || !sm || !eh || !em) {
+                document.getElementById("announcement-message").textContent = "開始・終了時間を選択してください。";
+                return;
+            }
+            document.getElementById("start_time").value = `${sh}:${sm}`;
+            document.getElementById("end_time").value = `${eh}:${em}`;
 
             const visibility = document.querySelector('input[name="visibility"]:checked').value;
             let selectedMembers = [];
