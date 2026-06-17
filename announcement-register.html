@@ -129,7 +129,23 @@
                 </div>
                 <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700">回答期限（出欠確認ありの場合）</label>
-                    <input id="attendance_deadline" type="datetime-local" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" disabled>
+                    <div class="mt-1 flex items-center gap-2 flex-wrap">
+                        <input id="attendance_deadline_date" type="date" class="border border-gray-300 rounded-lg px-3 py-2 text-sm" disabled>
+                        <select id="attendance_deadline_h" class="border border-gray-300 rounded-lg px-2 py-2 text-sm" disabled>
+                            <option value="">--</option>
+                            <script>for(let h=0;h<24;h++)document.write(`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`);</script>
+                        </select>
+                        <span class="text-sm">時</span>
+                        <select id="attendance_deadline_m" class="border border-gray-300 rounded-lg px-2 py-2 text-sm" disabled>
+                            <option value="">--</option>
+                            <option value="00">00</option>
+                            <option value="15">15</option>
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                        </select>
+                        <span class="text-sm">分</span>
+                    </div>
+                    <input type="hidden" id="attendance_deadline">
                 </div>
                 <div class="md:col-span-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                     <p class="text-xs text-indigo-800">Googleカレンダー連携はお知らせ登録後に各自で実行します（登録時の連携は行いません）。</p>
@@ -240,8 +256,11 @@
             document.getElementById("visibility_all").checked = true;
             document.getElementById("visibility_specific").checked = false;
             document.getElementById("attendance_required").checked = false;
-            document.getElementById("attendance_deadline").value = "";
-            document.getElementById("attendance_deadline").disabled = true;
+            ["attendance_deadline_date","attendance_deadline_h","attendance_deadline_m"].forEach(id => {
+                const el = document.getElementById(id);
+                el.value = "";
+                el.disabled = true;
+            });
             document.getElementById("specific-members-section").classList.add("hidden");
             document.querySelectorAll("#member-group-list .member-group-checkbox").forEach((checkbox) => {
                 checkbox.checked = false;
@@ -592,12 +611,14 @@
             }
 
             if (payload.attendance_required) {
-                const deadlineInput = document.getElementById("attendance_deadline").value;
-                if (!deadlineInput) {
+                const dd = document.getElementById("attendance_deadline_date").value;
+                const dh = document.getElementById("attendance_deadline_h").value;
+                const dm = document.getElementById("attendance_deadline_m").value;
+                if (!dd || !dh || !dm) {
                     document.getElementById("announcement-message").textContent = "出欠確認を行う場合は回答期限を入力してください。";
                     return;
                 }
-                payload.attendance_deadline = new Date(deadlineInput).toISOString();
+                payload.attendance_deadline = new Date(`${dd}T${dh}:${dm}:00+09:00`).toISOString();
             }
 
             const { data, error } = await dbClient
@@ -704,12 +725,12 @@
         });
 
         document.getElementById("attendance_required").addEventListener("change", (event) => {
-            const deadlineInput = document.getElementById("attendance_deadline");
             const isRequired = Boolean(event.target.checked);
-            deadlineInput.disabled = !isRequired;
-            if (!isRequired) {
-                deadlineInput.value = "";
-            }
+            ["attendance_deadline_date","attendance_deadline_h","attendance_deadline_m"].forEach(id => {
+                const el = document.getElementById(id);
+                el.disabled = !isRequired;
+                if (!isRequired) el.value = "";
+            });
         });
 
         document.getElementById("announcement-form").addEventListener("submit", saveAnnouncement);
