@@ -31,8 +31,13 @@
 
         <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-pink-600 to-indigo-700 text-white shadow-lg mb-8 flex items-center justify-between flex-wrap gap-4">
             <div>
-                <h1 class="text-3xl md:text-4xl font-bold mb-1">日程調整</h1>
-                <p class="text-pink-100">日程候補を提示してメンバーの参加可否を○△×で集計します。</p>
+                <h1 class="text-3xl md:text-4xl font-bold mb-2">日程調整</h1>
+                <ul class="text-pink-100 text-sm space-y-1">
+                    <li><i class="fas fa-calendar-plus mr-2 opacity-80"></i>日程候補を複数提示し、対象メンバーが○△×で参加可否を回答できます。</li>
+                    <li><i class="fas fa-table mr-2 opacity-80"></i>回答状況を一覧表で確認。最も○が多い候補が一目でわかります。</li>
+                    <li><i class="fas fa-user-check mr-2 opacity-80"></i>全員対象または特定メンバーのみに絞った調整が可能です。</li>
+                    <li><i class="fas fa-lock mr-2 opacity-80"></i>全員回答後に自動締切・決定日程の確定と、お知らせへの連動登録ができます。</li>
+                </ul>
             </div>
             <button id="new-event-btn" class="bg-white text-indigo-700 hover:bg-indigo-50 font-bold px-5 py-2 rounded-lg shadow text-sm">
                 <i class="fas fa-plus mr-1"></i>新規作成
