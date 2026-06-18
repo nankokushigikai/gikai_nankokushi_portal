@@ -138,10 +138,13 @@
 
         function initQuill() {
             const toolbarOptions = [
-                ["bold", "italic", "underline"],
-                [{ "header": 1 }, { "header": 2 }],
+                [{ "size": ["small", false, "large", "huge"] }],
+                ["bold", "italic", "underline", "strike"],
+                [{ "color": [] }, { "background": [] }],
+                [{ "header": 1 }, { "header": 2 }, { "header": 3 }],
                 [{ "list": "ordered" }, { "list": "bullet" }],
-                [{ "color": [] }],
+                [{ "align": [] }],
+                ["blockquote"],
                 ["clean"]
             ];
             if (!quillPost) {
