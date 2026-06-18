@@ -1374,10 +1374,6 @@
                 updated_at: new Date().toISOString()
             };
 
-            const dbPayload = { ...payload };
-            delete dbPayload.reminder_minutes_1;
-            delete dbPayload.reminder_minutes_2;
-
             const editMessage = document.getElementById("announcement-edit-message");
             if (!noValue || !payload.notice_date || !payload.start_time || !payload.end_time || !payload.title || !payload.content) {
                 editMessage.textContent = "必須項目を入力してください。";
@@ -1401,6 +1397,10 @@
             if (!payload.attendance_required) {
                 payload.attendance_deadline = null;
             }
+
+            const dbPayload = { ...payload };
+            delete dbPayload.reminder_minutes_1;
+            delete dbPayload.reminder_minutes_2;
 
             const saveTimestamp = payload.updated_at;
 
