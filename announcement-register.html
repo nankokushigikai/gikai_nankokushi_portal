@@ -37,6 +37,16 @@
             <h1 class="text-2xl font-bold mb-2 text-gray-700">お知らせ登録</h1>
             <p class="text-sm text-gray-600 mb-5">このページは全員が開けます。登録者名はログイン中の利用者名で自動保存されます。</p>
 
+            <!-- 日程調整からの引き継ぎバナー -->
+            <div id="schedule-prefill-banner" class="hidden mb-5 bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
+                <i class="fas fa-calendar-check text-rose-500 text-lg mt-0.5"></i>
+                <div>
+                    <p class="text-sm font-bold text-rose-800">日程調整から引き継ぎました</p>
+                    <p id="schedule-prefill-desc" class="text-xs text-rose-600 mt-0.5"></p>
+                    <a id="schedule-prefill-link" href="#" class="text-xs text-indigo-600 hover:underline mt-1 inline-block">← 日程調整画面に戻る</a>
+                </div>
+            </div>
+
             <form id="announcement-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-semibold text-gray-700">タイトル</label>
@@ -1038,6 +1048,54 @@
             if (e.key === "Enter") { e.preventDefault(); addTitleMasterFromInput(); }
         });
 
+        function prefillFromSchedule() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("from_schedule") !== "1") return;
+
+            const banner = document.getElementById("schedule-prefill-banner");
+            const eventId = params.get("schedule_event_id");
+            const title   = params.get("title") || "";
+            const date    = params.get("notice_date") || "";
+            const startH  = params.get("start_h") || "";
+            const startM  = params.get("start_m") || "";
+            const endH    = params.get("end_h") || "";
+            const endM    = params.get("end_m") || "";
+            const remarks = params.get("remarks") || "";
+            const visibility = params.get("visibility") || "all";
+            const recipients = params.get("recipients") ? params.get("recipients").split(",").filter(Boolean) : [];
+
+            // フォーム入力
+            if (title)   document.getElementById("notice_title").value = title;
+            if (date)    document.getElementById("notice_date").value = date;
+            if (startH)  document.getElementById("start_time_h").value = startH;
+            if (startM)  document.getElementById("start_time_m").value = startM;
+            if (endH)    document.getElementById("end_time_h").value = endH;
+            if (endM)    document.getElementById("end_time_m").value = endM;
+            if (remarks) document.getElementById("remarks").value = remarks;
+
+            // 対象者
+            if (visibility === "specific" && recipients.length > 0) {
+                document.getElementById("visibility_specific").checked = true;
+                document.getElementById("visibility_all").checked = false;
+                document.getElementById("specific-members-section").classList.remove("hidden");
+                // メンバーチェックボックスに反映
+                document.querySelectorAll("#members-list .member-checkbox").forEach(cb => {
+                    cb.checked = recipients.includes(cb.value);
+                });
+            }
+
+            // バナー表示
+            if (banner) {
+                document.getElementById("schedule-prefill-desc").textContent =
+                    `「${title}」の情報を引き継いでいます。内容を確認・修正してから保存してください。`;
+                if (eventId) {
+                    document.getElementById("schedule-prefill-link").href =
+                        `schedule.html?id=${eventId}`;
+                }
+                banner.classList.remove("hidden");
+            }
+        }
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -1052,6 +1110,7 @@
                 await loadMembers();
                 await loadTitleMasters();
                 await loadRecentAnnouncements();
+                prefillFromSchedule();
             }
         });
     </script>

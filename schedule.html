@@ -51,12 +51,15 @@
                 <button id="back-to-list-btn" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
                     <i class="fas fa-chevron-left mr-1"></i>一覧に戻る
                 </button>
-                <div class="flex gap-2" id="detail-admin-buttons">
+                <div class="flex gap-2 flex-wrap" id="detail-admin-buttons">
                     <button id="detail-edit-btn" class="hidden bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                         <i class="fas fa-edit mr-1"></i>編集
                     </button>
                     <button id="detail-close-btn-admin" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                         <i class="fas fa-lock mr-1"></i>締め切る
+                    </button>
+                    <button id="detail-announce-btn" class="hidden bg-rose-500 hover:bg-rose-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                        <i class="fas fa-bullhorn mr-1"></i>お知らせを作成
                     </button>
                     <button id="detail-delete-btn" class="hidden bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                         <i class="fas fa-trash mr-1"></i>削除
@@ -436,6 +439,7 @@
             currentSlots = slotsRes.data || [];
             currentResponses = respRes.data || [];
             const recipients = (recipRes.data || []).map(r => r.member_email);
+            window._scheduleRecipients = recipients;
 
             document.getElementById("detail-title").textContent = ev.title;
             document.getElementById("detail-description").textContent = ev.description || "";
@@ -468,6 +472,7 @@
             document.getElementById("detail-edit-btn").classList.toggle("hidden", !isCreator || ev.is_closed);
             document.getElementById("detail-delete-btn").classList.toggle("hidden", !isCreator);
             document.getElementById("detail-close-btn-admin").classList.toggle("hidden", !isCreator || ev.is_closed);
+            document.getElementById("detail-announce-btn").classList.toggle("hidden", !isCreator || !ev.is_closed);
 
             renderMatrix();
             renderMyResponseForm(ev.is_closed);
@@ -686,6 +691,36 @@
             document.getElementById("event-list-section").classList.remove("hidden");
             currentEventId = null;
             loadEvents();
+        });
+
+        document.getElementById("detail-announce-btn").addEventListener("click", () => {
+            const ev = editCurrentEvent;
+            if (!ev) return;
+            const decidedSlot = currentSlots.find(s => s.id === ev.decided_slot_id);
+            const params = new URLSearchParams();
+            params.set("from_schedule", "1");
+            params.set("schedule_event_id", String(ev.id));
+            params.set("title", `【日程決定】${ev.title}`);
+            if (decidedSlot) {
+                params.set("notice_date", decidedSlot.slot_date);
+                if (decidedSlot.slot_start) {
+                    params.set("start_h", String(decidedSlot.slot_start).slice(0, 2));
+                    params.set("start_m", String(decidedSlot.slot_start).slice(3, 5));
+                }
+                if (decidedSlot.slot_end) {
+                    params.set("end_h", String(decidedSlot.slot_end).slice(0, 2));
+                    params.set("end_m", String(decidedSlot.slot_end).slice(3, 5));
+                }
+            }
+            params.set("remarks", `日程調整「${ev.title}」の決定日程です。`);
+            params.set("visibility", ev.visibility || "all");
+            if (ev.visibility === "specific") {
+                const recipEmails = currentSlots.length > 0
+                    ? (window._scheduleRecipients || []).join(",")
+                    : "";
+                if (recipEmails) params.set("recipients", recipEmails);
+            }
+            window.location.href = `announcement-register.html?${params.toString()}`;
         });
 
         document.getElementById("detail-close-btn-admin").addEventListener("click", async () => {
