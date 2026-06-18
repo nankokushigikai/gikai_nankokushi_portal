@@ -52,6 +52,15 @@
                 <p id="announcement-tile-message" class="mt-2 text-xs text-gray-600"></p>
             </div>
 
+            <!-- 日程調整 お知らせ作成依頼（作成者向け） -->
+            <div id="schedule-action-section" class="mt-4 bg-white p-5 rounded-xl shadow-sm border-l-4 border-rose-500 hidden">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="text-rose-500 text-xl"><i class="fas fa-bullhorn"></i></div>
+                    <h3 class="text-base font-bold text-gray-800">日程調整の結果 — お知らせ作成のお願い</h3>
+                </div>
+                <ul id="schedule-action-list" class="space-y-2 text-sm"></ul>
+            </div>
+
             <!-- 日程調整 未回答通知 -->
             <div id="schedule-pending-section" class="mt-4 bg-white p-5 rounded-xl shadow-sm border-l-4 border-pink-500 hidden">
                 <div class="flex items-center gap-2 mb-3">
@@ -1392,6 +1401,76 @@
                 }).join("");
             } catch (_e) {
                 // スケジュール読み込み失敗は無視
+            }
+
+            // 作成者向け：全員回答済みでお知らせ未作成のイベントを表示
+            try {
+                const { data: myClosedEvents } = await client.from("schedule_events")
+                    .select("id,title,decided_slot_id,visibility")
+                    .eq("created_by_email", userEmail)
+                    .eq("is_closed", true)
+                    .not("decided_slot_id", "is", null)
+                    .order("updated_at", { ascending: false })
+                    .limit(10);
+
+                if (!myClosedEvents || myClosedEvents.length === 0) return;
+
+                // 決定スロット情報を取得
+                const slotIds = myClosedEvents.map(e => e.decided_slot_id).filter(Boolean);
+                const { data: slots } = await client.from("schedule_slots")
+                    .select("id,slot_date,slot_start,slot_end").in("id", slotIds);
+                const slotMap = {};
+                (slots || []).forEach(s => { slotMap[s.id] = s; });
+
+                // localStorage で「閉じた」ものを除外
+                const dismissed = JSON.parse(localStorage.getItem("scheduleActionDismissed") || "{}");
+                const actionItems = myClosedEvents.filter(e => !dismissed[e.id]);
+                if (actionItems.length === 0) return;
+
+                const portalBase = (window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "";
+                const actionSection = document.getElementById("schedule-action-section");
+                const actionList = document.getElementById("schedule-action-list");
+                actionSection.classList.remove("hidden");
+                actionList.innerHTML = actionItems.map(ev => {
+                    const slot = slotMap[ev.decided_slot_id];
+                    const p = new URLSearchParams({
+                        from_schedule: "1",
+                        schedule_event_id: String(ev.id),
+                        title: `【日程決定】${ev.title}`,
+                        remarks: `日程調整「${ev.title}」の決定日程です。`,
+                        visibility: ev.visibility || "all"
+                    });
+                    if (slot) {
+                        p.set("notice_date", slot.slot_date);
+                        if (slot.slot_start) { p.set("start_h", String(slot.slot_start).slice(0,2)); p.set("start_m", String(slot.slot_start).slice(3,5)); }
+                        if (slot.slot_end)   { p.set("end_h",   String(slot.slot_end).slice(0,2));   p.set("end_m",   String(slot.slot_end).slice(3,5)); }
+                    }
+                    const announceUrl = `announcement-register.html?${p.toString()}`;
+                    return `<li class="flex items-center justify-between gap-2 py-2 border-b border-gray-100 last:border-0" data-action-event-id="${ev.id}">
+                        <span class="flex items-center gap-2 flex-1 min-w-0">
+                            <span class="text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full whitespace-nowrap">要作成</span>
+                            <span class="text-gray-800 font-semibold text-sm">「${ev.title}」全員が回答しました。お知らせを作成してください。</span>
+                        </span>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <a href="${announceUrl}" class="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg font-semibold whitespace-nowrap">お知らせを作成</a>
+                            <button class="dismiss-action-btn text-gray-300 hover:text-gray-500 text-base font-bold leading-none" data-event-id="${ev.id}" title="閉じる">×</button>
+                        </div>
+                    </li>`;
+                }).join("");
+
+                // ×ボタンで非表示（localStorage に記録）
+                actionList.querySelectorAll(".dismiss-action-btn").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const id = btn.dataset.eventId;
+                        const d = JSON.parse(localStorage.getItem("scheduleActionDismissed") || "{}");
+                        d[id] = true;
+                        localStorage.setItem("scheduleActionDismissed", JSON.stringify(d));
+                        btn.closest("li").remove();
+                        if (!actionList.children.length) actionSection.classList.add("hidden");
+                    });
+                });
+            } catch (_e) {
+                // 作成者向け通知の読み込み失敗は無視
             }
         }
 

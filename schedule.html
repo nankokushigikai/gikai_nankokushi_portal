@@ -693,6 +693,7 @@
             const decidedLabel = decidedSlot ? formatSlotLabel(decidedSlot) : "";
             const portalUrl = (window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "";
             const scheduleUrl = `${portalUrl}/schedule.html?id=${currentEventId}`;
+            // 対象者（自分以外）への完了通知
             const notifyEmails = targetEmails.filter(e => e !== currentUser.email);
             if (notifyEmails.length > 0 && decidedLabel) {
                 const body = `日程調整「${ev.title}」に全員が回答したため自動的に締め切られました。\n\n決定日程: ${decidedLabel}\n\n詳細はこちら: ${scheduleUrl}`;
@@ -701,6 +702,35 @@
                         body: { toEmails: notifyEmails, subject: `【日程決定】${ev.title}`, body, senderName: ev.created_by_name || ev.created_by_email }
                     });
                 } catch (e) { console.warn("完了メール送信失敗:", e); }
+            }
+
+            // 作成者への「お知らせ作成」依頼メール
+            if (ev.created_by_email && decidedLabel) {
+                const announceParams = new URLSearchParams({
+                    from_schedule: "1",
+                    schedule_event_id: String(currentEventId),
+                    title: `【日程決定】${ev.title}`,
+                    remarks: `日程調整「${ev.title}」の決定日程です。`,
+                    visibility: ev.visibility || "all"
+                });
+                if (decidedSlot) {
+                    announceParams.set("notice_date", decidedSlot.slot_date);
+                    if (decidedSlot.slot_start) {
+                        announceParams.set("start_h", String(decidedSlot.slot_start).slice(0, 2));
+                        announceParams.set("start_m", String(decidedSlot.slot_start).slice(3, 5));
+                    }
+                    if (decidedSlot.slot_end) {
+                        announceParams.set("end_h", String(decidedSlot.slot_end).slice(0, 2));
+                        announceParams.set("end_m", String(decidedSlot.slot_end).slice(3, 5));
+                    }
+                }
+                const announceUrl = `${portalUrl}/announcement-register.html?${announceParams.toString()}`;
+                const creatorBody = `日程調整「${ev.title}」に全員が回答し、自動的に締め切られました。\n\n決定日程: ${decidedLabel}\n\n対象メンバーへの周知のため、お知らせを作成してください:\n${announceUrl}`;
+                try {
+                    await dbClient.functions.invoke("mail-notice-send", {
+                        body: { toEmails: [ev.created_by_email], subject: `【要対応】全員回答完了 - ${ev.title}`, body: creatorBody, senderName: "日程調整システム" }
+                    });
+                } catch (e) { console.warn("作成者メール送信失敗:", e); }
             }
 
             // 画面を更新
