@@ -442,7 +442,7 @@
             }
             try {
                 if (!_gisTokenClient) {
-                    const clientId = (typeof PORTAL_CONFIG !== "undefined" && PORTAL_CONFIG.googleClientId) || "";
+                    const clientId = (typeof AUTH_CONFIG !== "undefined" && AUTH_CONFIG.googleClientId) || "";
                     if (!clientId) return null;
                     _gisTokenClient = google.accounts.oauth2.initTokenClient({
                         client_id: clientId,
