@@ -840,8 +840,16 @@
                 });
             }
 
+            const nowTime = new Date().toTimeString().slice(0, 5); // "HH:MM"
             return lifecycleFilteredRows
-                .filter((item) => String(item.notice_date || "") >= today)
+                .filter((item) => {
+                    const d = String(item.notice_date || "");
+                    if (d > today) return true;
+                    if (d < today) return false;
+                    // 今日の場合：終了時間が現在時刻より後ならば表示
+                    const endTime = String(item.end_time || "").slice(0, 5);
+                    return !endTime || endTime > nowTime;
+                })
                 .sort((a, b) => {
                     const dateCompare = String(a.notice_date || "").localeCompare(String(b.notice_date || ""));
                     if (dateCompare !== 0) return dateCompare;
