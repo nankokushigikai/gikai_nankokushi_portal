@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://www.googleapis.com https://calendar.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>委員会活動 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" integrity="sha384-07UbSXbd8HpaOfxZsiO6Y8H1HTX6v0J96b5qP6PKSpYEuSZSYD4GFFHlLRjvjVrL" crossorigin="anonymous" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js" integrity="sha384-0zm5QqnR2gL4GY5AwreU3xp5AEGWqkdbamrRLeXwWwepp4JqmPRawLJFD8Cm802W" crossorigin="anonymous"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">委員会活動</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6">
+            <a href="index.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>ポータルトップに戻る
+            </a>
+        </div>
+
+        <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-teal-600 to-indigo-700 text-white shadow-lg mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold mb-2">委員会活動</h1>
+            <p class="text-teal-100">各委員会の議案を投稿・管理します。</p>
+        </section>
+
+        <!-- 委員会タブ -->
+        <div class="flex flex-wrap gap-3 mb-6">
+            <button data-committee="giun"    class="committee-tab-btn px-5 py-2 rounded-full font-semibold text-sm border-2 transition" >議会運営委員会</button>
+            <button data-committee="soumu"   class="committee-tab-btn px-5 py-2 rounded-full font-semibold text-sm border-2 transition" >総務委員会</button>
+            <button data-committee="kyoiku"  class="committee-tab-btn px-5 py-2 rounded-full font-semibold text-sm border-2 transition" >教育民生委員会</button>
+            <button data-committee="sangyo"  class="committee-tab-btn px-5 py-2 rounded-full font-semibold text-sm border-2 transition" >産業建設委員会</button>
+        </div>
+
+        <!-- 投稿フォーム -->
+        <section id="post-form-section" class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-teal-500 mb-6 hidden">
+            <h2 id="post-form-title" class="text-lg font-bold text-gray-700 mb-4"></h2>
+            <div class="mb-3">
+                <label class="text-sm font-semibold text-gray-700">議案タイトル</label>
+                <input id="bill-title" type="text" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 〇〇条例の一部改正について">
+            </div>
+            <div class="mb-3">
+                <label class="text-sm font-semibold text-gray-700">内容</label>
+                <div id="bill-editor" class="mt-1 bg-white rounded-b-lg" style="min-height:180px;"></div>
+            </div>
+            <div class="flex gap-3 mt-4">
+                <button type="button" id="save-bill-btn" class="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">投稿する</button>
+                <button type="button" id="cancel-bill-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
+            </div>
+            <p id="form-message" class="mt-2 text-sm text-red-600 hidden"></p>
+        </section>
+
+        <!-- 議案一覧 -->
+        <section id="bills-section" class="hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h2 id="bills-title" class="text-lg font-bold text-gray-700"></h2>
+                <button type="button" id="new-bill-btn" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                    <i class="fas fa-plus mr-1"></i>新規投稿
+                </button>
+            </div>
+
+            <!-- フィルター -->
+            <div class="flex gap-3 mb-4">
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" name="bill-filter" value="all" checked class="w-4 h-4"> すべて
+                </label>
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" name="bill-filter" value="active" class="w-4 h-4"> 未完了
+                </label>
+                <label class="flex items-center gap-1 text-sm cursor-pointer">
+                    <input type="radio" name="bill-filter" value="completed" class="w-4 h-4"> 完了済
+                </label>
+            </div>
+
+            <div id="bills-list" class="space-y-4">
+                <p class="text-gray-400 text-sm">読み込み中...</p>
+            </div>
+        </section>
+
+        <!-- 編集モーダル -->
+        <div id="edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+                <h2 class="text-lg font-bold text-gray-700 mb-4">議案を編集</h2>
+                <input type="hidden" id="edit-bill-id">
+                <div class="mb-3">
+                    <label class="text-sm font-semibold text-gray-700">議案タイトル</label>
+                    <input id="edit-bill-title" type="text" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="mb-3">
+                    <label class="text-sm font-semibold text-gray-700">内容</label>
+                    <div id="edit-bill-editor" class="mt-1 bg-white rounded-b-lg" style="min-height:180px;"></div>
+                </div>
+                <div class="flex gap-3 mt-4">
+                    <button type="button" id="update-bill-btn" class="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">保存</button>
+                    <button type="button" id="close-edit-modal-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-5 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
+                </div>
+                <p id="edit-form-message" class="mt-2 text-sm text-red-600 hidden"></p>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        const COMMITTEES = {
+            giun:   "議会運営委員会",
+            soumu:  "総務委員会",
+            kyoiku: "教育民生委員会",
+            sangyo: "産業建設委員会"
+        };
+        const TAB_COLORS = {
+            giun:   { active: "bg-cyan-600 text-white border-cyan-600",   inactive: "bg-white text-cyan-700 border-cyan-400 hover:bg-cyan-50" },
+            soumu:  { active: "bg-blue-600 text-white border-blue-600",    inactive: "bg-white text-blue-700 border-blue-400 hover:bg-blue-50" },
+            kyoiku: { active: "bg-purple-600 text-white border-purple-600",inactive: "bg-white text-purple-700 border-purple-400 hover:bg-purple-50" },
+            sangyo: { active: "bg-orange-500 text-white border-orange-500",inactive: "bg-white text-orange-600 border-orange-400 hover:bg-orange-50" }
+        };
+
+        let dbClient = null;
+        let currentUser = null;
+        let currentCommittee = null;
+        let allBills = [];
+        let quillPost = null;
+        let quillEdit = null;
+        let editingId = null;
+
+        function initQuill() {
+            const toolbarOptions = [
+                ["bold", "italic", "underline"],
+                [{ "header": 1 }, { "header": 2 }],
+                [{ "list": "ordered" }, { "list": "bullet" }],
+                [{ "color": [] }],
+                ["clean"]
+            ];
+            if (!quillPost) {
+                quillPost = new Quill("#bill-editor", { theme: "snow", placeholder: "議案の内容を入力", modules: { toolbar: toolbarOptions } });
+            }
+            if (!quillEdit) {
+                quillEdit = new Quill("#edit-bill-editor", { theme: "snow", placeholder: "議案の内容を入力", modules: { toolbar: toolbarOptions } });
+            }
+        }
+
+        function switchTab(committeeId) {
+            currentCommittee = committeeId;
+            document.querySelectorAll(".committee-tab-btn").forEach(btn => {
+                const c = btn.dataset.committee;
+                btn.className = "committee-tab-btn px-5 py-2 rounded-full font-semibold text-sm border-2 transition " +
+                    (c === committeeId ? TAB_COLORS[c].active : TAB_COLORS[c].inactive);
+            });
+            document.getElementById("post-form-section").classList.add("hidden");
+            document.getElementById("bills-section").classList.remove("hidden");
+            document.getElementById("bills-title").textContent = COMMITTEES[committeeId] + " の議案一覧";
+            document.getElementById("post-form-title").textContent = COMMITTEES[committeeId] + " に議案を投稿";
+            loadBills();
+        }
+
+        async function loadBills() {
+            const { data, error } = await dbClient
+                .from("committee_bills")
+                .select("*")
+                .eq("committee", currentCommittee)
+                .order("is_completed", { ascending: true })
+                .order("created_at", { ascending: false });
+            if (error) { console.error(error); return; }
+            allBills = data || [];
+            renderBills();
+        }
+
+        function renderBills() {
+            const filter = document.querySelector('input[name="bill-filter"]:checked').value;
+            const list = document.getElementById("bills-list");
+            const filtered = allBills.filter(b => {
+                if (filter === "active") return !b.is_completed;
+                if (filter === "completed") return b.is_completed;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-sm">議案はまだありません。</p>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(b => `
+                <div class="bg-white rounded-xl shadow-sm border ${b.is_completed ? 'border-green-300 bg-green-50' : 'border-gray-200'} p-5">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <button type="button" class="toggle-complete-btn flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition
+                                ${b.is_completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-400'}"
+                                data-id="${b.id}" data-completed="${b.is_completed}" title="${b.is_completed ? '完了を解除' : '完了にする'}">
+                                ${b.is_completed ? '<i class="fas fa-check text-xs"></i>' : ''}
+                            </button>
+                            <h3 class="font-semibold text-gray-800 truncate ${b.is_completed ? 'line-through text-gray-400' : ''}">${escapeHtml(b.title)}</h3>
+                        </div>
+                        <div class="flex gap-2 flex-shrink-0">
+                            <button type="button" class="edit-bill-btn text-indigo-600 hover:text-indigo-800 text-xs font-semibold" data-id="${b.id}">編集</button>
+                            <button type="button" class="delete-bill-btn text-rose-600 hover:text-rose-800 text-xs font-semibold" data-id="${b.id}">削除</button>
+                        </div>
+                    </div>
+                    ${b.content ? `<div class="mt-3 text-sm text-gray-600 ql-editor p-0 border-none" style="padding:0">${b.content}</div>` : ''}
+                    <div class="mt-2 text-xs text-gray-400">
+                        ${b.created_by_name ? escapeHtml(b.created_by_name) + ' ・ ' : ''}${new Date(b.created_at).toLocaleDateString('ja-JP')}
+                        ${b.is_completed && b.completed_at ? ' ・ 完了: ' + new Date(b.completed_at).toLocaleDateString('ja-JP') : ''}
+                    </div>
+                </div>
+            `).join("");
+
+            list.querySelectorAll(".toggle-complete-btn").forEach(btn => {
+                btn.addEventListener("click", () => toggleComplete(Number(btn.dataset.id), btn.dataset.completed === "true"));
+            });
+            list.querySelectorAll(".edit-bill-btn").forEach(btn => {
+                btn.addEventListener("click", () => openEditModal(Number(btn.dataset.id)));
+            });
+            list.querySelectorAll(".delete-bill-btn").forEach(btn => {
+                btn.addEventListener("click", () => deleteBill(Number(btn.dataset.id)));
+            });
+        }
+
+        async function toggleComplete(id, current) {
+            const newVal = !current;
+            const { error } = await dbClient.from("committee_bills").update({
+                is_completed: newVal,
+                completed_at: newVal ? new Date().toISOString() : null,
+                updated_at: new Date().toISOString()
+            }).eq("id", id);
+            if (!error) loadBills();
+        }
+
+        async function deleteBill(id) {
+            const bill = allBills.find(b => b.id === id);
+            if (!confirm(`「${bill ? bill.title : ''}」を削除しますか？`)) return;
+            const { error } = await dbClient.from("committee_bills").delete().eq("id", id);
+            if (!error) loadBills();
+        }
+
+        function openEditModal(id) {
+            const bill = allBills.find(b => b.id === id);
+            if (!bill) return;
+            editingId = id;
+            document.getElementById("edit-bill-id").value = id;
+            document.getElementById("edit-bill-title").value = bill.title;
+            quillEdit.root.innerHTML = bill.content || "";
+            document.getElementById("edit-form-message").classList.add("hidden");
+            document.getElementById("edit-modal").classList.remove("hidden");
+        }
+
+        function escapeHtml(str) {
+            return String(str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+        }
+
+        // イベント
+        document.querySelectorAll(".committee-tab-btn").forEach(btn => {
+            btn.addEventListener("click", () => switchTab(btn.dataset.committee));
+        });
+
+        document.getElementById("new-bill-btn").addEventListener("click", () => {
+            document.getElementById("bill-title").value = "";
+            quillPost.root.innerHTML = "";
+            document.getElementById("form-message").classList.add("hidden");
+            document.getElementById("post-form-section").classList.remove("hidden");
+            document.getElementById("post-form-section").scrollIntoView({ behavior: "smooth" });
+        });
+
+        document.getElementById("cancel-bill-btn").addEventListener("click", () => {
+            document.getElementById("post-form-section").classList.add("hidden");
+        });
+
+        document.getElementById("save-bill-btn").addEventListener("click", async () => {
+            const title = document.getElementById("bill-title").value.trim();
+            const msg = document.getElementById("form-message");
+            if (!title) { msg.textContent = "タイトルを入力してください。"; msg.classList.remove("hidden"); return; }
+            const content = quillPost.root.innerHTML === "<p><br></p>" ? null : quillPost.root.innerHTML;
+            const { error } = await dbClient.from("committee_bills").insert({
+                committee: currentCommittee,
+                title,
+                content,
+                created_by_email: currentUser?.email || null,
+                created_by_name: currentUser?.user_metadata?.full_name || currentUser?.email || null,
+            });
+            if (error) { msg.textContent = "投稿失敗: " + error.message; msg.classList.remove("hidden"); return; }
+            msg.classList.add("hidden");
+            document.getElementById("post-form-section").classList.add("hidden");
+            loadBills();
+        });
+
+        document.getElementById("update-bill-btn").addEventListener("click", async () => {
+            const title = document.getElementById("edit-bill-title").value.trim();
+            const msg = document.getElementById("edit-form-message");
+            if (!title) { msg.textContent = "タイトルを入力してください。"; msg.classList.remove("hidden"); return; }
+            const content = quillEdit.root.innerHTML === "<p><br></p>" ? null : quillEdit.root.innerHTML;
+            const { error } = await dbClient.from("committee_bills").update({
+                title, content, updated_at: new Date().toISOString()
+            }).eq("id", editingId);
+            if (error) { msg.textContent = "保存失敗: " + error.message; msg.classList.remove("hidden"); return; }
+            document.getElementById("edit-modal").classList.add("hidden");
+            loadBills();
+        });
+
+        document.getElementById("close-edit-modal-btn").addEventListener("click", () => {
+            document.getElementById("edit-modal").classList.add("hidden");
+        });
+        document.getElementById("edit-modal").addEventListener("click", e => {
+            if (e.target === document.getElementById("edit-modal")) document.getElementById("edit-modal").classList.add("hidden");
+        });
+
+        document.querySelectorAll('input[name="bill-filter"]').forEach(r => {
+            r.addEventListener("change", renderBills);
+        });
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            returnTo: "committee-activity.html",
+            onReady: async ({ client, user }) => {
+                dbClient = client;
+                currentUser = user;
+                initQuill();
+                switchTab("giun");
+            }
+        });
+    </script>
+</body>
+</html>

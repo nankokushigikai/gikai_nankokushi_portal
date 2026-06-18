@@ -333,6 +333,34 @@ alter table public.system_requests add column if not exists updated_by_name text
 alter table public.system_requests add column if not exists created_at timestamptz not null default now();
 alter table public.system_requests add column if not exists updated_at timestamptz not null default now();
 
+-- 委員会活動（議案）テーブル
+create table if not exists public.committee_bills (
+    id bigserial primary key,
+    committee text not null check (committee in ('giun', 'soumu', 'kyoiku', 'sangyo')),
+    title text not null,
+    content text,
+    is_completed boolean not null default false,
+    completed_at timestamptz,
+    created_by_email text,
+    created_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+alter table public.committee_bills enable row level security;
+
+create policy committee_bills_select on public.committee_bills
+    for select using (true);
+
+create policy committee_bills_insert on public.committee_bills
+    for insert with check (auth.role() = 'authenticated');
+
+create policy committee_bills_update on public.committee_bills
+    for update using (auth.role() = 'authenticated');
+
+create policy committee_bills_delete on public.committee_bills
+    for delete using (public.is_portal_admin());
+
 create index if not exists announcements_notice_date_idx
 on public.announcements (notice_date desc, start_time asc);
 
