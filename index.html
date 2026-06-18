@@ -100,7 +100,8 @@
             </a>
 
             <!-- 日程調整 -->
-            <a href="schedule.html" class="block bg-white p-6 rounded-xl shadow-sm border-t-4 border-pink-500 hover:shadow-md hover:-translate-y-0.5 transition cursor-pointer">
+            <a href="schedule.html" class="block bg-white p-6 rounded-xl shadow-sm border-t-4 border-pink-500 hover:shadow-md hover:-translate-y-0.5 transition cursor-pointer relative">
+                <span id="schedule-tile-badge" class="hidden absolute top-3 right-3 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full"></span>
                 <div class="text-pink-500 text-3xl mb-4"><i class="fas fa-calendar-check"></i></div>
                 <h3 class="text-lg font-bold mb-2 text-gray-800">日程調整</h3>
                 <p class="text-sm text-gray-500">日程候補を提示してメンバーの参加可否を○△×で集計します。</p>
@@ -1375,6 +1376,8 @@
 
                 const section = document.getElementById("schedule-pending-section");
                 const list = document.getElementById("schedule-pending-list");
+                const badge = document.getElementById("schedule-tile-badge");
+                if (badge) { badge.textContent = `未回答 ${pending.length}件`; badge.classList.remove("hidden"); }
                 section.classList.remove("hidden");
                 list.innerHTML = pending.map(ev => {
                     const deadline = ev.deadline ? ` <span class="text-xs text-gray-400">期限: ${ev.deadline}</span>` : "";
