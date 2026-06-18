@@ -51,6 +51,15 @@
                 </div>
                 <p id="announcement-tile-message" class="mt-2 text-xs text-gray-600"></p>
             </div>
+
+            <!-- 日程調整 未回答通知 -->
+            <div id="schedule-pending-section" class="mt-4 bg-white p-5 rounded-xl shadow-sm border-l-4 border-pink-500 hidden">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="text-pink-500 text-xl"><i class="fas fa-calendar-check"></i></div>
+                    <h3 class="text-base font-bold text-gray-800">日程調整（未回答）</h3>
+                </div>
+                <ul id="schedule-pending-list" class="space-y-2 text-sm"></ul>
+            </div>
         </section>
 
         <!-- タイル型メニュー -->
@@ -1332,6 +1341,57 @@
             });
         }
 
+        async function loadPendingSchedules(client, userEmail) {
+            try {
+                // 自分が対象のイベントIDを取得（全員対象 + 指定対象）
+                const [evAllRes, myRecipRes] = await Promise.all([
+                    client.from("schedule_events").select("id,title,deadline").eq("visibility", "all").eq("is_closed", false),
+                    client.from("schedule_recipients").select("event_id").eq("member_email", userEmail)
+                ]);
+
+                const specificIds = (myRecipRes.data || []).map(r => r.event_id);
+                let specificEvents = [];
+                if (specificIds.length > 0) {
+                    const { data } = await client.from("schedule_events")
+                        .select("id,title,deadline").in("id", specificIds).eq("is_closed", false);
+                    specificEvents = data || [];
+                }
+
+                const seen = new Set();
+                const events = [];
+                [...(evAllRes.data || []), ...specificEvents].forEach(ev => {
+                    if (!seen.has(ev.id)) { seen.add(ev.id); events.push(ev); }
+                });
+
+                if (events.length === 0) return;
+
+                // 自分の回答済みイベントIDを取得
+                const { data: myResp } = await client.from("schedule_responses")
+                    .select("event_id").eq("member_email", userEmail);
+                const answeredIds = new Set((myResp || []).map(r => r.event_id));
+
+                const pending = events.filter(ev => !answeredIds.has(ev.id));
+                if (pending.length === 0) return;
+
+                const section = document.getElementById("schedule-pending-section");
+                const list = document.getElementById("schedule-pending-list");
+                section.classList.remove("hidden");
+                list.innerHTML = pending.map(ev => {
+                    const deadline = ev.deadline ? ` <span class="text-xs text-gray-400">期限: ${ev.deadline}</span>` : "";
+                    return `<li class="flex items-center justify-between gap-2 py-1 border-b border-gray-100 last:border-0">
+                        <span class="flex items-center gap-2">
+                            <span class="text-xs bg-pink-100 text-pink-700 font-bold px-2 py-0.5 rounded-full">未回答</span>
+                            <span class="text-gray-800 font-semibold">${ev.title}</span>
+                            ${deadline}
+                        </span>
+                        <a href="schedule.html?id=${ev.id}" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-semibold whitespace-nowrap">回答する</a>
+                    </li>`;
+                }).join("");
+            } catch (_e) {
+                // スケジュール読み込み失敗は無視
+            }
+        }
+
         portalAuth.init({
             requireAuth: true,
             minRole: "viewer",
@@ -1355,6 +1415,7 @@
                     || userEmail;
                 announcementModalContext = { client: context.client, userEmail, userRole: context.role || "viewer", responderName };
                 await loadAnnouncements(context.client, userEmail, context.role || "viewer", responderName);
+                if (userEmail) await loadPendingSchedules(context.client, userEmail);
             }
         });
 

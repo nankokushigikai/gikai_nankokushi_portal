@@ -1530,3 +1530,31 @@ create policy schedule_responses_delete_authenticated on public.schedule_respons
 for delete using (auth.uid() is not null);
 
 notify pgrst, 'reload schema';
+
+-- 日程調整：対象者指定対応
+alter table public.schedule_events
+    add column if not exists visibility text not null default 'all'
+    check (visibility in ('all', 'specific'));
+
+create table if not exists public.schedule_recipients (
+    id           bigserial primary key,
+    event_id     bigint not null references public.schedule_events(id) on delete cascade,
+    member_email text not null,
+    unique(event_id, member_email)
+);
+
+alter table public.schedule_recipients enable row level security;
+
+drop policy if exists schedule_recipients_select_authenticated on public.schedule_recipients;
+create policy schedule_recipients_select_authenticated on public.schedule_recipients
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_recipients_insert_authenticated on public.schedule_recipients;
+create policy schedule_recipients_insert_authenticated on public.schedule_recipients
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_recipients_delete_authenticated on public.schedule_recipients;
+create policy schedule_recipients_delete_authenticated on public.schedule_recipients
+for delete using (auth.uid() is not null);
+
+notify pgrst, 'reload schema';

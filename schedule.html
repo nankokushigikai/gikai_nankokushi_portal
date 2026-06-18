@@ -32,7 +32,7 @@
         <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-pink-600 to-indigo-700 text-white shadow-lg mb-8 flex items-center justify-between flex-wrap gap-4">
             <div>
                 <h1 class="text-3xl md:text-4xl font-bold mb-1">日程調整</h1>
-                <p class="text-pink-100">日程候補を提示して、メンバーの参加可否を集計します。</p>
+                <p class="text-pink-100">日程候補を提示してメンバーの参加可否を○△×で集計します。</p>
             </div>
             <button id="new-event-btn" class="bg-white text-indigo-700 hover:bg-indigo-50 font-bold px-5 py-2 rounded-lg shadow text-sm">
                 <i class="fas fa-plus mr-1"></i>新規作成
@@ -51,7 +51,7 @@
                 <button id="back-to-list-btn" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
                     <i class="fas fa-chevron-left mr-1"></i>一覧に戻る
                 </button>
-                <div class="flex gap-2">
+                <div class="flex gap-2" id="detail-admin-buttons">
                     <button id="detail-close-btn-admin" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                         <i class="fas fa-lock mr-1"></i>締め切る
                     </button>
@@ -61,16 +61,13 @@
                 </div>
             </div>
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-                <div class="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                        <h2 id="detail-title" class="text-2xl font-bold text-gray-800 mb-1"></h2>
-                        <p id="detail-description" class="text-sm text-gray-600 mb-2"></p>
-                        <div class="flex flex-wrap gap-3 text-xs text-gray-500">
-                            <span id="detail-deadline"></span>
-                            <span id="detail-creator"></span>
-                            <span id="detail-status"></span>
-                        </div>
-                    </div>
+                <h2 id="detail-title" class="text-2xl font-bold text-gray-800 mb-1"></h2>
+                <p id="detail-description" class="text-sm text-gray-600 mb-2"></p>
+                <div class="flex flex-wrap gap-3 text-xs text-gray-500">
+                    <span id="detail-deadline"></span>
+                    <span id="detail-creator"></span>
+                    <span id="detail-status"></span>
+                    <span id="detail-recipients-info"></span>
                 </div>
             </div>
 
@@ -120,6 +117,23 @@
                         <i class="fas fa-plus mr-1"></i>候補を追加
                     </button>
                 </div>
+                <!-- 対象者 -->
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <label class="text-sm font-semibold text-blue-800 block mb-2">対象者</label>
+                    <div class="flex gap-4 mb-3">
+                        <label class="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="create-visibility" value="all" checked class="w-4 h-4"> 全員
+                        </label>
+                        <label class="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="create-visibility" value="specific" class="w-4 h-4"> 特定のメンバーのみ
+                        </label>
+                    </div>
+                    <div id="create-members-section" class="hidden">
+                        <div id="create-member-list" class="border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto bg-white">
+                            <p class="text-xs text-gray-400">読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
                 <p id="create-message" class="text-sm text-red-600 hidden"></p>
             </div>
             <div class="p-5 border-t border-gray-200 flex justify-end gap-3">
@@ -138,7 +152,8 @@
         let currentEventId = null;
         let currentSlots = [];
         let currentResponses = [];
-        let myPendingResponses = {}; // slotId -> response value
+        let myPendingResponses = {};
+        let allMembers = [];
 
         const RESPONSE_LABELS = { circle: "○", triangle: "△", cross: "×" };
         const RESPONSE_COLORS = {
@@ -154,9 +169,10 @@
 
         function formatDate(d) {
             if (!d) return "";
-            const dt = new Date(d);
+            const [y,m,day] = String(d).split("-");
+            const dt = new Date(Number(y), Number(m)-1, Number(day));
             const days = ["日","月","火","水","木","金","土"];
-            return `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}（${days[dt.getDay()]}）`;
+            return `${y}/${m}/${day}（${days[dt.getDay()]}）`;
         }
 
         function formatSlotLabel(slot) {
@@ -167,41 +183,71 @@
             return `${date} ${start}${end}`;
         }
 
+        async function loadMembers() {
+            const { data } = await dbClient
+                .from("member_directory")
+                .select("email,full_name")
+                .eq("is_current", true)
+                .order("seat_number", { ascending: true, nullsFirst: false });
+            allMembers = data || [];
+        }
+
         // ---- イベント一覧 ----
         async function loadEvents() {
-            const { data, error } = await dbClient
-                .from("schedule_events")
-                .select("id,title,description,deadline,is_closed,created_by_name,created_at")
-                .order("created_at", { ascending: false });
+            // visibility='all' のイベントと自分が対象のイベントを取得
+            const [evAll, myRecipients] = await Promise.all([
+                dbClient.from("schedule_events")
+                    .select("id,title,description,deadline,is_closed,created_by_name,created_by_email,visibility,created_at")
+                    .eq("visibility", "all")
+                    .order("created_at", { ascending: false }),
+                dbClient.from("schedule_recipients")
+                    .select("event_id")
+                    .eq("member_email", currentUser.email)
+            ]);
+
+            const specificIds = (myRecipients.data || []).map(r => r.event_id);
+            let specificEvents = [];
+            if (specificIds.length > 0) {
+                const { data } = await dbClient
+                    .from("schedule_events")
+                    .select("id,title,description,deadline,is_closed,created_by_name,created_by_email,visibility,created_at")
+                    .in("id", specificIds)
+                    .order("created_at", { ascending: false });
+                specificEvents = data || [];
+            }
+
+            const seen = new Set();
+            const events = [];
+            [...(evAll.data || []), ...specificEvents].forEach(ev => {
+                if (!seen.has(ev.id)) { seen.add(ev.id); events.push(ev); }
+            });
+            events.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
             const container = document.getElementById("event-list");
             const msg = document.getElementById("event-list-message");
 
-            if (error) {
-                msg.textContent = "読み込みエラー: " + error.message;
-                msg.classList.remove("hidden");
-                return;
-            }
-            if (!data || data.length === 0) {
+            if (events.length === 0) {
                 msg.textContent = "まだ日程調整がありません。「新規作成」ボタンから作成してください。";
                 msg.classList.remove("hidden");
                 container.innerHTML = "";
                 return;
             }
             msg.classList.add("hidden");
-            container.innerHTML = data.map(ev => {
+            container.innerHTML = events.map(ev => {
                 const deadlineText = ev.deadline ? `回答期限: ${formatDate(ev.deadline)}` : "";
                 const statusBadge = ev.is_closed
                     ? `<span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">締め切り済み</span>`
                     : `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">受付中</span>`;
+                const targetBadge = ev.visibility === "specific"
+                    ? `<span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">指定対象</span>` : "";
                 return `
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition event-card"
                      data-event-id="${ev.id}">
-                    <div class="flex items-start justify-between mb-2">
+                    <div class="flex items-start justify-between mb-2 gap-2 flex-wrap">
                         <h3 class="font-bold text-gray-800 text-base leading-snug">${escapeHtml(ev.title)}</h3>
-                        ${statusBadge}
+                        <div>${statusBadge}${targetBadge}</div>
                     </div>
-                    ${ev.description ? `<p class="text-xs text-gray-500 mb-2 line-clamp-2">${escapeHtml(ev.description)}</p>` : ""}
+                    ${ev.description ? `<p class="text-xs text-gray-500 mb-2">${escapeHtml(ev.description)}</p>` : ""}
                     <div class="text-xs text-gray-400 space-y-0.5">
                         ${deadlineText ? `<div><i class="fas fa-clock mr-1"></i>${deadlineText}</div>` : ""}
                         <div><i class="fas fa-user mr-1"></i>作成: ${escapeHtml(ev.created_by_name || ev.created_by_email || "")}</div>
@@ -219,34 +265,19 @@
             currentEventId = eventId;
             myPendingResponses = {};
 
-            const { data: ev, error: evErr } = await dbClient
-                .from("schedule_events")
-                .select("*")
-                .eq("id", eventId)
-                .single();
+            const [evRes, slotsRes, respRes, recipRes] = await Promise.all([
+                dbClient.from("schedule_events").select("*").eq("id", eventId).single(),
+                dbClient.from("schedule_slots").select("*").eq("event_id", eventId).order("sort_order").order("slot_date").order("slot_start"),
+                dbClient.from("schedule_responses").select("*").eq("event_id", eventId),
+                dbClient.from("schedule_recipients").select("member_email").eq("event_id", eventId)
+            ]);
 
-            if (evErr || !ev) {
-                alert("イベントの読み込みに失敗しました。");
-                return;
-            }
+            if (evRes.error || !evRes.data) { alert("イベントの読み込みに失敗しました。"); return; }
+            const ev = evRes.data;
+            currentSlots = slotsRes.data || [];
+            currentResponses = respRes.data || [];
+            const recipients = (recipRes.data || []).map(r => r.member_email);
 
-            const { data: slots, error: slotsErr } = await dbClient
-                .from("schedule_slots")
-                .select("*")
-                .eq("event_id", eventId)
-                .order("sort_order")
-                .order("slot_date")
-                .order("slot_start");
-
-            const { data: responses, error: respErr } = await dbClient
-                .from("schedule_responses")
-                .select("*")
-                .eq("event_id", eventId);
-
-            currentSlots = slots || [];
-            currentResponses = responses || [];
-
-            // ヘッダー
             document.getElementById("detail-title").textContent = ev.title;
             document.getElementById("detail-description").textContent = ev.description || "";
             document.getElementById("detail-deadline").textContent = ev.deadline ? "回答期限: " + formatDate(ev.deadline) : "";
@@ -254,19 +285,19 @@
             document.getElementById("detail-status").innerHTML = ev.is_closed
                 ? `<span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs">締め切り済み</span>`
                 : `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">受付中</span>`;
+            document.getElementById("detail-recipients-info").textContent =
+                ev.visibility === "specific" ? `対象: ${recipients.length}名` : "対象: 全員";
 
             const isCreator = ev.created_by_email === currentUser.email;
             document.getElementById("detail-delete-btn").classList.toggle("hidden", !isCreator);
             document.getElementById("detail-close-btn-admin").classList.toggle("hidden", !isCreator || ev.is_closed);
 
-            // マトリクス描画
             renderMatrix();
-
-            // 自分の回答フォーム
             renderMyResponseForm(ev.is_closed);
 
             document.getElementById("event-list-section").classList.add("hidden");
             document.getElementById("event-detail-section").classList.remove("hidden");
+            window.scrollTo(0, 0);
         }
 
         function renderMatrix() {
@@ -276,17 +307,13 @@
                 return;
             }
 
-            // 回答者一覧（重複排除）
             const respondersMap = new Map();
             currentResponses.forEach(r => {
-                if (!respondersMap.has(r.member_email)) {
-                    respondersMap.set(r.member_email, r.member_name || r.member_email);
-                }
+                if (!respondersMap.has(r.member_email)) respondersMap.set(r.member_email, r.member_name || r.member_email);
             });
-            const responders = Array.from(respondersMap.entries()); // [[email, name], ...]
+            const responders = Array.from(respondersMap.entries());
 
-            // 集計
-            const counts = {}; // slotId -> {circle:0, triangle:0, cross:0}
+            const counts = {};
             currentSlots.forEach(s => { counts[s.id] = { circle: 0, triangle: 0, cross: 0 }; });
             currentResponses.forEach(r => {
                 if (counts[r.slot_id]) counts[r.slot_id][r.response] = (counts[r.slot_id][r.response] || 0) + 1;
@@ -304,11 +331,10 @@
                 </thead>
                 <tbody>`;
 
-            // 各回答者の行
             responders.forEach(([email, name]) => {
                 const isMe = email === currentUser.email;
                 html += `<tr class="border-b border-gray-100 ${isMe ? "bg-indigo-50" : ""}">
-                    <td class="${tdClass} text-left font-semibold text-gray-700">${escapeHtml(name)}${isMe ? " <span class='text-xs text-indigo-500'>（自分）</span>" : ""}</td>
+                    <td class="${tdClass} text-left font-semibold text-gray-700">${escapeHtml(name)}${isMe ? ` <span class='text-xs text-indigo-500'>（自分）</span>` : ""}</td>
                     ${currentSlots.map(s => {
                         const resp = currentResponses.find(r => r.member_email === email && r.slot_id === s.id);
                         const val = resp ? resp.response : "none";
@@ -323,7 +349,6 @@
                 html += `<tr><td colspan="${currentSlots.length + 1}" class="${tdClass} text-gray-400">まだ回答がありません。</td></tr>`;
             }
 
-            // 集計行
             html += `<tr class="border-t-2 border-gray-300 bg-gray-50">
                 <td class="${tdClass} text-left font-bold text-gray-700">集計</td>
                 ${currentSlots.map(s => {
@@ -336,29 +361,23 @@
                         </div>
                     </td>`;
                 }).join("")}
-            </tr>`;
+            </tr></tbody></table>`;
 
-            html += `</tbody></table>`;
             container.innerHTML = html;
         }
 
         function renderMyResponseForm(isClosed) {
             const form = document.getElementById("my-response-form");
-            const slotsDiv = document.getElementById("my-response-slots");
-
-            if (isClosed) {
-                form.classList.add("hidden");
-                return;
-            }
+            if (isClosed) { form.classList.add("hidden"); return; }
             form.classList.remove("hidden");
 
-            // 自分の既存回答を取得
             const myExisting = {};
             currentResponses.filter(r => r.member_email === currentUser.email).forEach(r => {
                 myExisting[r.slot_id] = r.response;
                 myPendingResponses[r.slot_id] = r.response;
             });
 
+            const slotsDiv = document.getElementById("my-response-slots");
             slotsDiv.innerHTML = currentSlots.map(s => {
                 const current = myExisting[s.id] || "";
                 return `<div class="flex items-center gap-3 flex-wrap py-1">
@@ -366,9 +385,8 @@
                     <div class="flex gap-2">
                         ${["circle","triangle","cross"].map(val => {
                             const active = current === val;
-                            const base = "response-btn px-3 py-1 rounded border text-sm font-bold cursor-pointer transition";
                             const cls = active ? RESPONSE_COLORS[val] + " ring-2 ring-offset-1 ring-indigo-400" : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50";
-                            return `<button class="${base} ${cls}" data-slot-id="${s.id}" data-value="${val}">${RESPONSE_LABELS[val]}</button>`;
+                            return `<button class="response-btn px-3 py-1 rounded border text-sm font-bold cursor-pointer transition ${cls}" data-slot-id="${s.id}" data-value="${val}">${RESPONSE_LABELS[val]}</button>`;
                         }).join("")}
                     </div>
                 </div>`;
@@ -379,7 +397,6 @@
                     const slotId = Number(btn.dataset.slotId);
                     const val = btn.dataset.value;
                     myPendingResponses[slotId] = val;
-                    // ボタン状態更新
                     slotsDiv.querySelectorAll(`.response-btn[data-slot-id="${slotId}"]`).forEach(b => {
                         const isActive = b.dataset.value === val;
                         b.className = `response-btn px-3 py-1 rounded border text-sm font-bold cursor-pointer transition ${isActive ? RESPONSE_COLORS[b.dataset.value] + " ring-2 ring-offset-1 ring-indigo-400" : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"}`;
@@ -388,16 +405,10 @@
             });
         }
 
-        // 回答保存
         document.getElementById("save-response-btn").addEventListener("click", async () => {
-            const msg = document.getElementById("response-message");
             if (!currentEventId) return;
-
             const slotIds = Object.keys(myPendingResponses);
-            if (slotIds.length === 0) {
-                showResponseMsg("回答を選択してください。", true);
-                return;
-            }
+            if (slotIds.length === 0) { showResponseMsg("回答を選択してください。", true); return; }
 
             const upsertData = slotIds.map(slotId => ({
                 event_id: currentEventId,
@@ -408,15 +419,10 @@
                 updated_at: new Date().toISOString()
             }));
 
-            const { error } = await dbClient
-                .from("schedule_responses")
+            const { error } = await dbClient.from("schedule_responses")
                 .upsert(upsertData, { onConflict: "slot_id,member_email" });
 
-            if (error) {
-                showResponseMsg("保存に失敗しました: " + error.message, true);
-                return;
-            }
-
+            if (error) { showResponseMsg("保存に失敗しました: " + error.message, true); return; }
             showResponseMsg("回答を保存しました。", false);
             await openEventDetail(currentEventId);
         });
@@ -429,7 +435,6 @@
             setTimeout(() => el.classList.add("hidden"), 4000);
         }
 
-        // 戻るボタン
         document.getElementById("back-to-list-btn").addEventListener("click", () => {
             document.getElementById("event-detail-section").classList.add("hidden");
             document.getElementById("event-list-section").classList.remove("hidden");
@@ -437,24 +442,17 @@
             loadEvents();
         });
 
-        // 締め切り
         document.getElementById("detail-close-btn-admin").addEventListener("click", async () => {
             if (!confirm("この日程調整を締め切りますか？")) return;
-            const { error } = await dbClient
-                .from("schedule_events")
-                .update({ is_closed: true, updated_at: new Date().toISOString() })
-                .eq("id", currentEventId);
+            const { error } = await dbClient.from("schedule_events")
+                .update({ is_closed: true, updated_at: new Date().toISOString() }).eq("id", currentEventId);
             if (error) { alert("失敗: " + error.message); return; }
             await openEventDetail(currentEventId);
         });
 
-        // 削除
         document.getElementById("detail-delete-btn").addEventListener("click", async () => {
-            if (!confirm("この日程調整を削除しますか？関連する回答もすべて削除されます。")) return;
-            const { error } = await dbClient
-                .from("schedule_events")
-                .delete()
-                .eq("id", currentEventId);
+            if (!confirm("この日程調整を削除しますか？")) return;
+            const { error } = await dbClient.from("schedule_events").delete().eq("id", currentEventId);
             if (error) { alert("削除失敗: " + error.message); return; }
             document.getElementById("event-detail-section").classList.add("hidden");
             document.getElementById("event-list-section").classList.remove("hidden");
@@ -469,7 +467,6 @@
             slotCount++;
             const div = document.createElement("div");
             div.className = "flex items-center gap-2 flex-wrap slot-row";
-            div.dataset.slotIndex = slotCount;
             div.innerHTML = `
                 <input type="date" class="slot-date border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
                 <select class="slot-start-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
@@ -491,13 +488,34 @@
                     <option value="00">00</option><option value="15">15</option>
                     <option value="30">30</option><option value="45">45</option>
                 </select>
-                <button type="button" class="remove-slot-btn text-red-400 hover:text-red-600 text-sm px-1"><i class="fas fa-times"></i></button>
-            `;
+                <button type="button" class="remove-slot-btn text-red-400 hover:text-red-600 text-sm px-1"><i class="fas fa-times"></i></button>`;
             div.querySelector(".remove-slot-btn").addEventListener("click", () => div.remove());
             document.getElementById("slot-inputs").appendChild(div);
         }
 
         document.getElementById("add-slot-btn").addEventListener("click", addSlotInput);
+
+        // 対象者ラジオ
+        document.querySelectorAll('input[name="create-visibility"]').forEach(radio => {
+            radio.addEventListener("change", () => {
+                const specific = radio.value === "specific";
+                document.getElementById("create-members-section").classList.toggle("hidden", !specific);
+                if (specific) renderCreateMemberList();
+            });
+        });
+
+        function renderCreateMemberList() {
+            const container = document.getElementById("create-member-list");
+            if (allMembers.length === 0) {
+                container.innerHTML = '<p class="text-xs text-gray-400">メンバーが読み込まれていません。</p>';
+                return;
+            }
+            container.innerHTML = allMembers.map(m => `
+                <label class="flex items-center gap-2 py-1 hover:bg-gray-50 rounded cursor-pointer">
+                    <input type="checkbox" value="${escapeHtml(m.email)}" class="create-member-cb w-4 h-4">
+                    <span class="text-sm text-gray-700">${escapeHtml(m.full_name)} (${escapeHtml(m.email)})</span>
+                </label>`).join("");
+        }
 
         function openCreateModal() {
             document.getElementById("create-title").value = "";
@@ -505,16 +523,14 @@
             document.getElementById("create-deadline").value = "";
             document.getElementById("slot-inputs").innerHTML = "";
             document.getElementById("create-message").classList.add("hidden");
+            document.getElementById("create-members-section").classList.add("hidden");
+            document.querySelector('input[name="create-visibility"][value="all"]').checked = true;
             slotCount = 0;
-            addSlotInput();
-            addSlotInput();
-            addSlotInput();
+            addSlotInput(); addSlotInput(); addSlotInput();
             document.getElementById("create-modal").classList.remove("hidden");
         }
 
-        function closeCreateModal() {
-            document.getElementById("create-modal").classList.add("hidden");
-        }
+        function closeCreateModal() { document.getElementById("create-modal").classList.add("hidden"); }
 
         document.getElementById("new-event-btn").addEventListener("click", openCreateModal);
         document.getElementById("create-modal-close").addEventListener("click", closeCreateModal);
@@ -527,15 +543,11 @@
             const title = document.getElementById("create-title").value.trim();
             const description = document.getElementById("create-description").value.trim();
             const deadline = document.getElementById("create-deadline").value || null;
+            const visibility = document.querySelector('input[name="create-visibility"]:checked').value;
             const msgEl = document.getElementById("create-message");
 
-            if (!title) {
-                msgEl.textContent = "タイトルを入力してください。";
-                msgEl.classList.remove("hidden");
-                return;
-            }
+            if (!title) { msgEl.textContent = "タイトルを入力してください。"; msgEl.classList.remove("hidden"); return; }
 
-            // スロット収集
             const slotRows = document.querySelectorAll("#slot-inputs .slot-row");
             const slots = [];
             let sortOrder = 0;
@@ -554,48 +566,31 @@
                 });
             }
 
-            if (slots.length === 0) {
-                msgEl.textContent = "日程候補を1つ以上入力してください。";
-                msgEl.classList.remove("hidden");
-                return;
+            if (slots.length === 0) { msgEl.textContent = "日程候補を1つ以上入力してください。"; msgEl.classList.remove("hidden"); return; }
+
+            let selectedEmails = [];
+            if (visibility === "specific") {
+                document.querySelectorAll(".create-member-cb:checked").forEach(cb => selectedEmails.push(cb.value));
+                if (selectedEmails.length === 0) { msgEl.textContent = "対象メンバーを選択してください。"; msgEl.classList.remove("hidden"); return; }
             }
 
-            // イベント作成
-            const { data: evData, error: evErr } = await dbClient
-                .from("schedule_events")
-                .insert({
-                    title,
-                    description: description || null,
-                    deadline,
-                    created_by_email: currentUser.email,
-                    created_by_name: currentUser.name || currentUser.email,
-                    is_closed: false
-                })
-                .select("id")
-                .single();
+            const { data: evData, error: evErr } = await dbClient.from("schedule_events")
+                .insert({ title, description: description || null, deadline, visibility, created_by_email: currentUser.email, created_by_name: currentUser.name || currentUser.email, is_closed: false })
+                .select("id").single();
 
-            if (evErr || !evData) {
-                msgEl.textContent = "作成失敗: " + (evErr && evErr.message);
-                msgEl.classList.remove("hidden");
-                return;
-            }
+            if (evErr || !evData) { msgEl.textContent = "作成失敗: " + (evErr && evErr.message); msgEl.classList.remove("hidden"); return; }
 
-            // スロット作成
-            const slotsPayload = slots.map(s => ({ ...s, event_id: evData.id }));
-            const { error: slotsErr } = await dbClient
-                .from("schedule_slots")
-                .insert(slotsPayload);
+            const { error: slotsErr } = await dbClient.from("schedule_slots")
+                .insert(slots.map(s => ({ ...s, event_id: evData.id })));
+            if (slotsErr) { msgEl.textContent = "日程候補の保存失敗: " + slotsErr.message; msgEl.classList.remove("hidden"); return; }
 
-            if (slotsErr) {
-                msgEl.textContent = "日程候補の保存失敗: " + slotsErr.message;
-                msgEl.classList.remove("hidden");
-                return;
+            if (visibility === "specific" && selectedEmails.length > 0) {
+                await dbClient.from("schedule_recipients")
+                    .insert(selectedEmails.map(email => ({ event_id: evData.id, member_email: email })));
             }
 
             closeCreateModal();
             await openEventDetail(evData.id);
-            document.getElementById("event-list-section").classList.add("hidden");
-            document.getElementById("event-detail-section").classList.remove("hidden");
         });
 
         // ---- 初期化 ----
@@ -611,7 +606,14 @@
                     email: (sessionUser && sessionUser.email) || (session && session.email) || (profile && profile.email) || "",
                     name: (session && session.displayName) || (profile && profile.display_name) || ""
                 };
-                await loadEvents();
+                await Promise.all([loadMembers(), loadEvents()]);
+
+                // URLパラメータでイベントIDが指定されている場合は直接開く
+                const params = new URLSearchParams(window.location.search);
+                const eventIdParam = params.get("id");
+                if (eventIdParam) {
+                    await openEventDetail(Number(eventIdParam));
+                }
             }
         });
     </script>
