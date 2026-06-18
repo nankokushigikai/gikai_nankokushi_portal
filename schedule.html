@@ -141,7 +141,11 @@
                         </label>
                     </div>
                     <div id="create-members-section" class="hidden">
-                        <div id="create-member-list" class="border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto bg-white">
+                        <div id="create-group-list" class="border border-gray-200 rounded-lg p-3 bg-gray-50 mb-2 flex flex-wrap">
+                            <p class="text-xs text-gray-400">グループ読み込み中...</p>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-1 ml-1">または個別に選択：</p>
+                        <div id="create-member-list" class="border border-gray-300 rounded-lg p-3 max-h-36 overflow-y-auto bg-white">
                             <p class="text-xs text-gray-400">読み込み中...</p>
                         </div>
                     </div>
@@ -200,7 +204,11 @@
                         </label>
                     </div>
                     <div id="edit-members-section" class="hidden">
-                        <div id="edit-member-list" class="border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto bg-white">
+                        <div id="edit-group-list" class="border border-gray-200 rounded-lg p-3 bg-gray-50 mb-2 flex flex-wrap">
+                            <p class="text-xs text-gray-400">グループ読み込み中...</p>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-1 ml-1">または個別に選択：</p>
+                        <div id="edit-member-list" class="border border-gray-300 rounded-lg p-3 max-h-36 overflow-y-auto bg-white">
                             <p class="text-xs text-gray-400">読み込み中...</p>
                         </div>
                     </div>
@@ -272,10 +280,75 @@
         async function loadMembers() {
             const { data } = await dbClient
                 .from("member_directory")
-                .select("email,full_name")
+                .select("email,full_name,seat_number,category,position_name,committee,is_giun,is_editorial_committee,kaiha")
                 .eq("is_current", true)
                 .order("seat_number", { ascending: true, nullsFirst: false });
             allMembers = data || [];
+        }
+
+        const MEMBER_GROUPS = [
+            { id: "leaders",   label: "正副議長" },
+            { id: "giun",      label: "議会運営委員会" },
+            { id: "soumu",     label: "総務委員会" },
+            { id: "sangyo",    label: "産業建設委員会" },
+            { id: "kyoiku",    label: "教育民生委員会" },
+            { id: "editorial", label: "編集委員会" }
+        ];
+
+        function normalizeText(v) { return String(v || "").replace(/\s+/g, "").trim(); }
+
+        function memberBelongsToGroup(member, groupId) {
+            const pos = String(member.position_name || "").trim();
+            const com = normalizeText(member.committee);
+            if (groupId === "leaders")   return pos === "議長" || pos === "副議長";
+            if (groupId === "giun")      return Boolean(member.is_giun);
+            if (groupId === "soumu")     return com.includes("総務委員会");
+            if (groupId === "sangyo")    return com.includes("産業建設委員会");
+            if (groupId === "kyoiku")    return com.includes("教育民生委員会");
+            if (groupId === "editorial") return Boolean(member.is_editorial_committee);
+            if (groupId === "kaiha_none") return !member.kaiha;
+            if (groupId.startsWith("kaiha:")) return member.kaiha === groupId.slice(6);
+            return false;
+        }
+
+        function renderScheduleGroupList(groupContainerId, memberListContainerId, cbClass) {
+            const container = document.getElementById(groupContainerId);
+            if (!container) return;
+            const fixedHtml = MEMBER_GROUPS.map(g => `
+                <label class="inline-flex items-center gap-2 p-2 mr-2 mb-1 hover:bg-white rounded cursor-pointer">
+                    <input type="checkbox" value="${g.id}" class="sch-group-cb w-4 h-4">
+                    <span class="text-sm">${g.label}</span>
+                </label>`).join("");
+            const kaihaSet = [...new Set(allMembers.map(m => m.kaiha).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja"));
+            const hasNoKaiha = allMembers.some(m => !m.kaiha);
+            const kaihaHtml = (kaihaSet.length === 0 && !hasNoKaiha) ? "" : `
+                <div class="w-full border-t border-gray-200 mt-1 pt-2">
+                    <span class="text-xs text-gray-500 mr-2">会派：</span>
+                    ${kaihaSet.map(k => `
+                        <label class="inline-flex items-center gap-2 p-2 mr-2 mb-1 hover:bg-white rounded cursor-pointer">
+                            <input type="checkbox" value="kaiha:${k}" class="sch-group-cb w-4 h-4">
+                            <span class="text-sm">${escapeHtml(k)}</span>
+                        </label>`).join("")}
+                    ${hasNoKaiha ? `
+                        <label class="inline-flex items-center gap-2 p-2 mr-2 mb-1 hover:bg-white rounded cursor-pointer">
+                            <input type="checkbox" value="kaiha_none" class="sch-group-cb w-4 h-4">
+                            <span class="text-sm">会派なし</span>
+                        </label>` : ""}
+                </div>`;
+            container.innerHTML = fixedHtml + kaihaHtml;
+            container.querySelectorAll(".sch-group-cb").forEach(cb => {
+                cb.addEventListener("change", () => {
+                    const selectedGroupIds = new Set(
+                        Array.from(container.querySelectorAll(".sch-group-cb:checked")).map(c => c.value)
+                    );
+                    document.querySelectorAll(`#${memberListContainerId} .${cbClass}`).forEach(mc => {
+                        const member = allMembers.find(m => m.email === mc.value);
+                        if (!member) return;
+                        if (Array.from(selectedGroupIds).some(gid => memberBelongsToGroup(member, gid)))
+                            mc.checked = true;
+                    });
+                });
+            });
         }
 
         // ---- イベント一覧 ----
@@ -322,7 +395,7 @@
             container.innerHTML = events.map(ev => {
                 const deadlineText = ev.deadline ? `回答期限: ${formatDate(ev.deadline)}` : "";
                 const statusBadge = ev.is_closed
-                    ? `<span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">締め切り済み</span>`
+                    ? `<span class="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">✓ 完了</span>`
                     : `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">受付中</span>`;
                 const targetBadge = ev.visibility === "specific"
                     ? `<span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">指定対象</span>` : "";
@@ -664,6 +737,16 @@
                 if (slotId) editRemovedSlotIds.push(slotId);
                 div.remove();
             });
+            // 時を選んだら分を自動的に00にセット
+            div.querySelectorAll(".slot-start-h, .slot-end-h").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    if (!sel.value) return;
+                    const mSel = sel.classList.contains("slot-start-h")
+                        ? div.querySelector(".slot-start-m")
+                        : div.querySelector(".slot-end-m");
+                    if (mSel && !mSel.value) mSel.value = "00";
+                });
+            });
             document.getElementById(containerId).appendChild(div);
         }
 
@@ -708,6 +791,7 @@
                     <input type="checkbox" value="${escapeHtml(m.email)}" class="edit-member-cb w-4 h-4" ${existingEmails.has(m.email) ? "checked" : ""}>
                     <span class="text-sm text-gray-700">${escapeHtml(m.full_name)} (${escapeHtml(m.email)})</span>
                 </label>`).join("");
+            renderScheduleGroupList("edit-group-list", "edit-member-list", "edit-member-cb");
         }
 
         document.querySelectorAll('input[name="edit-visibility"]').forEach(radio => {
@@ -822,6 +906,16 @@
                 </select>
                 <button type="button" class="remove-slot-btn text-red-400 hover:text-red-600 text-sm px-1"><i class="fas fa-times"></i></button>`;
             div.querySelector(".remove-slot-btn").addEventListener("click", () => div.remove());
+            // 時を選んだら分を自動的に00にセット
+            div.querySelectorAll(".slot-start-h, .slot-end-h").forEach(sel => {
+                sel.addEventListener("change", () => {
+                    if (!sel.value) return;
+                    const mSel = sel.classList.contains("slot-start-h")
+                        ? div.querySelector(".slot-start-m")
+                        : div.querySelector(".slot-end-m");
+                    if (mSel && !mSel.value) mSel.value = "00";
+                });
+            });
             document.getElementById("slot-inputs").appendChild(div);
         }
 
@@ -847,6 +941,7 @@
                     <input type="checkbox" value="${escapeHtml(m.email)}" class="create-member-cb w-4 h-4">
                     <span class="text-sm text-gray-700">${escapeHtml(m.full_name)} (${escapeHtml(m.email)})</span>
                 </label>`).join("");
+            renderScheduleGroupList("create-group-list", "create-member-list", "create-member-cb");
         }
 
         function openCreateModal() {
