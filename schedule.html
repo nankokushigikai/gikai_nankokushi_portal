@@ -249,6 +249,15 @@
         let myPendingResponses = {};
         let allMembers = [];
 
+        // 時間セレクト用オプション HTML（05-23 を先に、00-04 を末尾に配置してスクロール不要な時間帯を最初に表示）
+        function makeHoursOpts() {
+            const normalHours = Array.from({length:19}, (_,i) => i + 5);   // 05〜23
+            const earlyHours  = Array.from({length:5},  (_,i) => i);        // 00〜04
+            const toOpt = h => `<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`;
+            return `<optgroup label="通常時間帯">${normalHours.map(toOpt).join("")}</optgroup>`
+                 + `<optgroup label="深夜・早朝">${earlyHours.map(toOpt).join("")}</optgroup>`;
+        }
+
         const RESPONSE_LABELS = { circle: "○", triangle: "△", cross: "×" };
         const RESPONSE_COLORS = {
             circle:   "bg-emerald-100 text-emerald-700 border-emerald-300",
@@ -558,6 +567,22 @@
             if (isClosed) { form.classList.add("hidden"); return; }
             form.classList.remove("hidden");
 
+            // auto_close が ON の場合は注意メッセージを表示
+            const noticeId = "auto-close-notice";
+            let noticeEl = document.getElementById(noticeId);
+            if (!noticeEl) {
+                noticeEl = document.createElement("p");
+                noticeEl.id = noticeId;
+                noticeEl.className = "text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-3";
+                form.insertBefore(noticeEl, form.firstChild);
+            }
+            if (editCurrentEvent && editCurrentEvent.auto_close) {
+                noticeEl.innerHTML = '<i class="fas fa-clock mr-1"></i>全員が回答次第、早く締め切る場合があります。';
+                noticeEl.classList.remove("hidden");
+            } else {
+                noticeEl.classList.add("hidden");
+            }
+
             const myExisting = {};
             currentResponses.filter(r => r.member_email === currentUser.email).forEach(r => {
                 myExisting[r.slot_id] = r.response;
@@ -751,7 +776,7 @@
         let editRemovedSlotIds = [];
 
         function makeSlotRow(containerId, slotId, date, startH, startM, endH, endM) {
-            const hoursOpts = Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join("");
+            const hoursOpts = makeHoursOpts();
             const div = document.createElement("div");
             div.className = "flex items-center gap-2 flex-wrap edit-slot-row";
             if (slotId) div.dataset.slotId = slotId;
@@ -926,8 +951,7 @@
             div.innerHTML = `
                 <input type="date" class="slot-date border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
                 <select class="slot-start-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
-                    <option value="">--</option>
-                    ${Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join("")}
+                    <option value="">--</option>${makeHoursOpts()}
                 </select>
                 <select class="slot-start-m border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
                     <option value="">--</option>
@@ -936,8 +960,7 @@
                 </select>
                 <span class="text-sm text-gray-500">〜</span>
                 <select class="slot-end-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
-                    <option value="">--</option>
-                    ${Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join("")}
+                    <option value="">--</option>${makeHoursOpts()}
                 </select>
                 <select class="slot-end-m border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
                     <option value="">--</option>
@@ -992,7 +1015,7 @@
             document.getElementById("create-message").classList.add("hidden");
             document.getElementById("create-members-section").classList.add("hidden");
             document.querySelector('input[name="create-visibility"][value="all"]').checked = true;
-            document.getElementById("create-auto-close").checked = false;
+            document.getElementById("create-auto-close").checked = true;
             slotCount = 0;
             addSlotInput(); addSlotInput(); addSlotInput();
             document.getElementById("create-modal").classList.remove("hidden");
