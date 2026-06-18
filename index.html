@@ -969,11 +969,11 @@
                 dot.className = `inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColors[index % dotColors.length]}`;
 
                 const date = document.createElement("span");
-                date.className = "text-sm font-semibold text-gray-700 whitespace-nowrap flex-shrink-0";
+                date.className = "text-base font-semibold text-gray-700 whitespace-nowrap flex-shrink-0";
                 date.textContent = formatAnnouncementDate(item.notice_date);
 
                 const time = document.createElement("span");
-                time.className = "text-sm text-gray-500 whitespace-nowrap flex-shrink-0";
+                time.className = "text-base text-gray-500 whitespace-nowrap flex-shrink-0";
                 time.textContent = `${item.start_time ? String(item.start_time).slice(0, 5) : "--:--"} ～ ${item.end_time ? String(item.end_time).slice(0, 5) : "--:--"}`;
 
                 const calendarBtn = document.createElement("button");
@@ -1011,7 +1011,7 @@
 
                 // ② タイトル
                 const row2 = document.createElement("div");
-                row2.className = "mt-1 text-sm font-semibold text-gray-800" + (isCanceled ? " line-through text-gray-500" : "");
+                row2.className = "mt-1 text-base font-semibold text-gray-800" + (isCanceled ? " line-through text-gray-500" : "");
                 row2.textContent = item.title || "";
                 li.appendChild(row2);
 
