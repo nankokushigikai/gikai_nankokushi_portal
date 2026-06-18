@@ -1437,3 +1437,96 @@ for delete using (
 -- PostgREST のスキーマキャッシュを明示的に再読込
 -- 追加テーブルが API 経由で見えない場合の保険
 notify pgrst, 'reload schema';
+
+-- ============================================================
+-- 日程調整 テーブル
+-- ============================================================
+
+-- イベント（調整単位）
+create table if not exists public.schedule_events (
+    id          bigserial primary key,
+    title       text not null,
+    description text,
+    deadline    date,
+    is_closed   boolean not null default false,
+    created_by_email text,
+    created_by_name  text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
+);
+
+alter table public.schedule_events enable row level security;
+
+drop policy if exists schedule_events_select_authenticated on public.schedule_events;
+create policy schedule_events_select_authenticated on public.schedule_events
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_events_insert_authenticated on public.schedule_events;
+create policy schedule_events_insert_authenticated on public.schedule_events
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_events_update_authenticated on public.schedule_events;
+create policy schedule_events_update_authenticated on public.schedule_events
+for update using (auth.uid() is not null);
+
+drop policy if exists schedule_events_delete_authenticated on public.schedule_events;
+create policy schedule_events_delete_authenticated on public.schedule_events
+for delete using (auth.uid() is not null);
+
+-- 日程候補（スロット）
+create table if not exists public.schedule_slots (
+    id          bigserial primary key,
+    event_id    bigint not null references public.schedule_events(id) on delete cascade,
+    slot_date   date not null,
+    slot_start  time,
+    slot_end    time,
+    sort_order  int not null default 0,
+    created_at  timestamptz not null default now()
+);
+
+alter table public.schedule_slots enable row level security;
+
+drop policy if exists schedule_slots_select_authenticated on public.schedule_slots;
+create policy schedule_slots_select_authenticated on public.schedule_slots
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_slots_insert_authenticated on public.schedule_slots;
+create policy schedule_slots_insert_authenticated on public.schedule_slots
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_slots_delete_authenticated on public.schedule_slots;
+create policy schedule_slots_delete_authenticated on public.schedule_slots
+for delete using (auth.uid() is not null);
+
+-- 回答（○△×）
+create table if not exists public.schedule_responses (
+    id           bigserial primary key,
+    event_id     bigint not null,
+    slot_id      bigint not null references public.schedule_slots(id) on delete cascade,
+    member_email text not null,
+    member_name  text,
+    response     text not null check (response in ('circle', 'triangle', 'cross')),
+    created_at   timestamptz not null default now(),
+    updated_at   timestamptz not null default now(),
+    unique(slot_id, member_email)
+);
+
+alter table public.schedule_responses enable row level security;
+
+drop policy if exists schedule_responses_select_authenticated on public.schedule_responses;
+create policy schedule_responses_select_authenticated on public.schedule_responses
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_responses_insert_authenticated on public.schedule_responses;
+create policy schedule_responses_insert_authenticated on public.schedule_responses
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_responses_update_authenticated on public.schedule_responses;
+create policy schedule_responses_update_authenticated on public.schedule_responses
+for update using (auth.uid() is not null);
+
+drop policy if exists schedule_responses_delete_authenticated on public.schedule_responses;
+create policy schedule_responses_delete_authenticated on public.schedule_responses
+for delete using (auth.uid() is not null);
+
+notify pgrst, 'reload schema';

@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co; worker-src blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日程調整 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">日程調整</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6">
+            <a href="index.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>ポータルトップに戻る
+            </a>
+        </div>
+
+        <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-pink-600 to-indigo-700 text-white shadow-lg mb-8 flex items-center justify-between flex-wrap gap-4">
+            <div>
+                <h1 class="text-3xl md:text-4xl font-bold mb-1">日程調整</h1>
+                <p class="text-pink-100">日程候補を提示して、メンバーの参加可否を集計します。</p>
+            </div>
+            <button id="new-event-btn" class="bg-white text-indigo-700 hover:bg-indigo-50 font-bold px-5 py-2 rounded-lg shadow text-sm">
+                <i class="fas fa-plus mr-1"></i>新規作成
+            </button>
+        </section>
+
+        <!-- イベント一覧 -->
+        <section id="event-list-section">
+            <p id="event-list-message" class="text-sm text-gray-500 mb-4 hidden"></p>
+            <div id="event-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
+
+        <!-- イベント詳細 -->
+        <section id="event-detail-section" class="hidden">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <button id="back-to-list-btn" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                    <i class="fas fa-chevron-left mr-1"></i>一覧に戻る
+                </button>
+                <div class="flex gap-2">
+                    <button id="detail-close-btn-admin" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                        <i class="fas fa-lock mr-1"></i>締め切る
+                    </button>
+                    <button id="detail-delete-btn" class="hidden bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                        <i class="fas fa-trash mr-1"></i>削除
+                    </button>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                <div class="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                        <h2 id="detail-title" class="text-2xl font-bold text-gray-800 mb-1"></h2>
+                        <p id="detail-description" class="text-sm text-gray-600 mb-2"></p>
+                        <div class="flex flex-wrap gap-3 text-xs text-gray-500">
+                            <span id="detail-deadline"></span>
+                            <span id="detail-creator"></span>
+                            <span id="detail-status"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p id="detail-message" class="text-sm mb-3 hidden"></p>
+
+            <!-- 回答マトリクス -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 overflow-x-auto">
+                <div id="response-matrix"></div>
+            </div>
+
+            <!-- 自分の回答フォーム -->
+            <div id="my-response-form" class="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+                <h3 class="font-bold text-indigo-800 mb-3"><i class="fas fa-pen mr-1"></i>自分の回答を入力</h3>
+                <div id="my-response-slots" class="space-y-2"></div>
+                <button id="save-response-btn" class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-semibold">
+                    <i class="fas fa-save mr-1"></i>回答を保存
+                </button>
+                <p id="response-message" class="text-sm mt-2 hidden"></p>
+            </div>
+        </section>
+    </main>
+
+    <!-- 新規作成モーダル -->
+    <div id="create-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div class="p-5 border-b border-gray-200 flex items-center justify-between">
+                <h2 class="text-lg font-bold text-gray-800">新規日程調整を作成</h2>
+                <button id="create-modal-close" class="text-gray-400 hover:text-gray-600 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1 space-y-4">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">タイトル <span class="text-red-500">*</span></label>
+                    <input id="create-title" type="text" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会日程調整">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">説明（任意）</label>
+                    <textarea id="create-description" rows="2" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="補足説明があれば入力"></textarea>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">回答期限（任意）</label>
+                    <input id="create-deadline" type="date" class="mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700 block mb-2">日程候補 <span class="text-red-500">*</span></label>
+                    <div id="slot-inputs" class="space-y-2"></div>
+                    <button id="add-slot-btn" type="button" class="mt-2 text-indigo-600 hover:text-indigo-800 text-sm font-semibold">
+                        <i class="fas fa-plus mr-1"></i>候補を追加
+                    </button>
+                </div>
+                <p id="create-message" class="text-sm text-red-600 hidden"></p>
+            </div>
+            <div class="p-5 border-t border-gray-200 flex justify-end gap-3">
+                <button id="create-cancel-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
+                <button id="create-save-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">作成</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        let dbClient = null;
+        let currentUser = { email: "", name: "" };
+        let currentEventId = null;
+        let currentSlots = [];
+        let currentResponses = [];
+        let myPendingResponses = {}; // slotId -> response value
+
+        const RESPONSE_LABELS = { circle: "○", triangle: "△", cross: "×" };
+        const RESPONSE_COLORS = {
+            circle:   "bg-emerald-100 text-emerald-700 border-emerald-300",
+            triangle: "bg-amber-100 text-amber-700 border-amber-300",
+            cross:    "bg-red-100 text-red-600 border-red-300",
+            none:     "bg-gray-100 text-gray-400 border-gray-300"
+        };
+
+        function escapeHtml(v) {
+            return String(v || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+        }
+
+        function formatDate(d) {
+            if (!d) return "";
+            const dt = new Date(d);
+            const days = ["日","月","火","水","木","金","土"];
+            return `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,"0")}/${String(dt.getDate()).padStart(2,"0")}（${days[dt.getDay()]}）`;
+        }
+
+        function formatSlotLabel(slot) {
+            const date = formatDate(slot.slot_date);
+            if (!slot.slot_start) return date;
+            const start = String(slot.slot_start).slice(0, 5);
+            const end = slot.slot_end ? "〜" + String(slot.slot_end).slice(0, 5) : "";
+            return `${date} ${start}${end}`;
+        }
+
+        // ---- イベント一覧 ----
+        async function loadEvents() {
+            const { data, error } = await dbClient
+                .from("schedule_events")
+                .select("id,title,description,deadline,is_closed,created_by_name,created_at")
+                .order("created_at", { ascending: false });
+
+            const container = document.getElementById("event-list");
+            const msg = document.getElementById("event-list-message");
+
+            if (error) {
+                msg.textContent = "読み込みエラー: " + error.message;
+                msg.classList.remove("hidden");
+                return;
+            }
+            if (!data || data.length === 0) {
+                msg.textContent = "まだ日程調整がありません。「新規作成」ボタンから作成してください。";
+                msg.classList.remove("hidden");
+                container.innerHTML = "";
+                return;
+            }
+            msg.classList.add("hidden");
+            container.innerHTML = data.map(ev => {
+                const deadlineText = ev.deadline ? `回答期限: ${formatDate(ev.deadline)}` : "";
+                const statusBadge = ev.is_closed
+                    ? `<span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">締め切り済み</span>`
+                    : `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">受付中</span>`;
+                return `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition event-card"
+                     data-event-id="${ev.id}">
+                    <div class="flex items-start justify-between mb-2">
+                        <h3 class="font-bold text-gray-800 text-base leading-snug">${escapeHtml(ev.title)}</h3>
+                        ${statusBadge}
+                    </div>
+                    ${ev.description ? `<p class="text-xs text-gray-500 mb-2 line-clamp-2">${escapeHtml(ev.description)}</p>` : ""}
+                    <div class="text-xs text-gray-400 space-y-0.5">
+                        ${deadlineText ? `<div><i class="fas fa-clock mr-1"></i>${deadlineText}</div>` : ""}
+                        <div><i class="fas fa-user mr-1"></i>作成: ${escapeHtml(ev.created_by_name || ev.created_by_email || "")}</div>
+                    </div>
+                </div>`;
+            }).join("");
+
+            container.querySelectorAll(".event-card").forEach(card => {
+                card.addEventListener("click", () => openEventDetail(Number(card.dataset.eventId)));
+            });
+        }
+
+        // ---- イベント詳細 ----
+        async function openEventDetail(eventId) {
+            currentEventId = eventId;
+            myPendingResponses = {};
+
+            const { data: ev, error: evErr } = await dbClient
+                .from("schedule_events")
+                .select("*")
+                .eq("id", eventId)
+                .single();
+
+            if (evErr || !ev) {
+                alert("イベントの読み込みに失敗しました。");
+                return;
+            }
+
+            const { data: slots, error: slotsErr } = await dbClient
+                .from("schedule_slots")
+                .select("*")
+                .eq("event_id", eventId)
+                .order("sort_order")
+                .order("slot_date")
+                .order("slot_start");
+
+            const { data: responses, error: respErr } = await dbClient
+                .from("schedule_responses")
+                .select("*")
+                .eq("event_id", eventId);
+
+            currentSlots = slots || [];
+            currentResponses = responses || [];
+
+            // ヘッダー
+            document.getElementById("detail-title").textContent = ev.title;
+            document.getElementById("detail-description").textContent = ev.description || "";
+            document.getElementById("detail-deadline").textContent = ev.deadline ? "回答期限: " + formatDate(ev.deadline) : "";
+            document.getElementById("detail-creator").textContent = "作成者: " + (ev.created_by_name || ev.created_by_email || "");
+            document.getElementById("detail-status").innerHTML = ev.is_closed
+                ? `<span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs">締め切り済み</span>`
+                : `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">受付中</span>`;
+
+            const isCreator = ev.created_by_email === currentUser.email;
+            document.getElementById("detail-delete-btn").classList.toggle("hidden", !isCreator);
+            document.getElementById("detail-close-btn-admin").classList.toggle("hidden", !isCreator || ev.is_closed);
+
+            // マトリクス描画
+            renderMatrix();
+
+            // 自分の回答フォーム
+            renderMyResponseForm(ev.is_closed);
+
+            document.getElementById("event-list-section").classList.add("hidden");
+            document.getElementById("event-detail-section").classList.remove("hidden");
+        }
+
+        function renderMatrix() {
+            const container = document.getElementById("response-matrix");
+            if (currentSlots.length === 0) {
+                container.innerHTML = "<p class='text-sm text-gray-500'>日程候補がありません。</p>";
+                return;
+            }
+
+            // 回答者一覧（重複排除）
+            const respondersMap = new Map();
+            currentResponses.forEach(r => {
+                if (!respondersMap.has(r.member_email)) {
+                    respondersMap.set(r.member_email, r.member_name || r.member_email);
+                }
+            });
+            const responders = Array.from(respondersMap.entries()); // [[email, name], ...]
+
+            // 集計
+            const counts = {}; // slotId -> {circle:0, triangle:0, cross:0}
+            currentSlots.forEach(s => { counts[s.id] = { circle: 0, triangle: 0, cross: 0 }; });
+            currentResponses.forEach(r => {
+                if (counts[r.slot_id]) counts[r.slot_id][r.response] = (counts[r.slot_id][r.response] || 0) + 1;
+            });
+
+            const thClass = "px-3 py-2 text-xs font-semibold text-center whitespace-nowrap";
+            const tdClass = "px-3 py-2 text-center text-sm";
+
+            let html = `<table class="w-full border-collapse text-sm">
+                <thead>
+                    <tr class="border-b-2 border-gray-300">
+                        <th class="${thClass} text-left text-gray-700 min-w-[100px]">氏名</th>
+                        ${currentSlots.map(s => `<th class="${thClass} text-gray-700">${escapeHtml(formatSlotLabel(s))}</th>`).join("")}
+                    </tr>
+                </thead>
+                <tbody>`;
+
+            // 各回答者の行
+            responders.forEach(([email, name]) => {
+                const isMe = email === currentUser.email;
+                html += `<tr class="border-b border-gray-100 ${isMe ? "bg-indigo-50" : ""}">
+                    <td class="${tdClass} text-left font-semibold text-gray-700">${escapeHtml(name)}${isMe ? " <span class='text-xs text-indigo-500'>（自分）</span>" : ""}</td>
+                    ${currentSlots.map(s => {
+                        const resp = currentResponses.find(r => r.member_email === email && r.slot_id === s.id);
+                        const val = resp ? resp.response : "none";
+                        const label = val === "none" ? "-" : RESPONSE_LABELS[val];
+                        const cls = RESPONSE_COLORS[val] || RESPONSE_COLORS.none;
+                        return `<td class="${tdClass}"><span class="inline-block px-2 py-0.5 rounded border text-xs font-bold ${cls}">${label}</span></td>`;
+                    }).join("")}
+                </tr>`;
+            });
+
+            if (responders.length === 0) {
+                html += `<tr><td colspan="${currentSlots.length + 1}" class="${tdClass} text-gray-400">まだ回答がありません。</td></tr>`;
+            }
+
+            // 集計行
+            html += `<tr class="border-t-2 border-gray-300 bg-gray-50">
+                <td class="${tdClass} text-left font-bold text-gray-700">集計</td>
+                ${currentSlots.map(s => {
+                    const c = counts[s.id];
+                    return `<td class="${tdClass}">
+                        <div class="flex flex-col items-center gap-0.5 text-xs">
+                            <span class="text-emerald-600 font-bold">○ ${c.circle}</span>
+                            <span class="text-amber-600 font-bold">△ ${c.triangle}</span>
+                            <span class="text-red-500 font-bold">× ${c.cross}</span>
+                        </div>
+                    </td>`;
+                }).join("")}
+            </tr>`;
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        function renderMyResponseForm(isClosed) {
+            const form = document.getElementById("my-response-form");
+            const slotsDiv = document.getElementById("my-response-slots");
+
+            if (isClosed) {
+                form.classList.add("hidden");
+                return;
+            }
+            form.classList.remove("hidden");
+
+            // 自分の既存回答を取得
+            const myExisting = {};
+            currentResponses.filter(r => r.member_email === currentUser.email).forEach(r => {
+                myExisting[r.slot_id] = r.response;
+                myPendingResponses[r.slot_id] = r.response;
+            });
+
+            slotsDiv.innerHTML = currentSlots.map(s => {
+                const current = myExisting[s.id] || "";
+                return `<div class="flex items-center gap-3 flex-wrap py-1">
+                    <span class="text-sm text-gray-700 min-w-[220px]">${escapeHtml(formatSlotLabel(s))}</span>
+                    <div class="flex gap-2">
+                        ${["circle","triangle","cross"].map(val => {
+                            const active = current === val;
+                            const base = "response-btn px-3 py-1 rounded border text-sm font-bold cursor-pointer transition";
+                            const cls = active ? RESPONSE_COLORS[val] + " ring-2 ring-offset-1 ring-indigo-400" : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50";
+                            return `<button class="${base} ${cls}" data-slot-id="${s.id}" data-value="${val}">${RESPONSE_LABELS[val]}</button>`;
+                        }).join("")}
+                    </div>
+                </div>`;
+            }).join("");
+
+            slotsDiv.querySelectorAll(".response-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const slotId = Number(btn.dataset.slotId);
+                    const val = btn.dataset.value;
+                    myPendingResponses[slotId] = val;
+                    // ボタン状態更新
+                    slotsDiv.querySelectorAll(`.response-btn[data-slot-id="${slotId}"]`).forEach(b => {
+                        const isActive = b.dataset.value === val;
+                        b.className = `response-btn px-3 py-1 rounded border text-sm font-bold cursor-pointer transition ${isActive ? RESPONSE_COLORS[b.dataset.value] + " ring-2 ring-offset-1 ring-indigo-400" : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"}`;
+                    });
+                });
+            });
+        }
+
+        // 回答保存
+        document.getElementById("save-response-btn").addEventListener("click", async () => {
+            const msg = document.getElementById("response-message");
+            if (!currentEventId) return;
+
+            const slotIds = Object.keys(myPendingResponses);
+            if (slotIds.length === 0) {
+                showResponseMsg("回答を選択してください。", true);
+                return;
+            }
+
+            const upsertData = slotIds.map(slotId => ({
+                event_id: currentEventId,
+                slot_id: Number(slotId),
+                member_email: currentUser.email,
+                member_name: currentUser.name || currentUser.email,
+                response: myPendingResponses[slotId],
+                updated_at: new Date().toISOString()
+            }));
+
+            const { error } = await dbClient
+                .from("schedule_responses")
+                .upsert(upsertData, { onConflict: "slot_id,member_email" });
+
+            if (error) {
+                showResponseMsg("保存に失敗しました: " + error.message, true);
+                return;
+            }
+
+            showResponseMsg("回答を保存しました。", false);
+            await openEventDetail(currentEventId);
+        });
+
+        function showResponseMsg(text, isError) {
+            const el = document.getElementById("response-message");
+            el.textContent = text;
+            el.className = `text-sm mt-2 ${isError ? "text-red-600" : "text-green-600"}`;
+            el.classList.remove("hidden");
+            setTimeout(() => el.classList.add("hidden"), 4000);
+        }
+
+        // 戻るボタン
+        document.getElementById("back-to-list-btn").addEventListener("click", () => {
+            document.getElementById("event-detail-section").classList.add("hidden");
+            document.getElementById("event-list-section").classList.remove("hidden");
+            currentEventId = null;
+            loadEvents();
+        });
+
+        // 締め切り
+        document.getElementById("detail-close-btn-admin").addEventListener("click", async () => {
+            if (!confirm("この日程調整を締め切りますか？")) return;
+            const { error } = await dbClient
+                .from("schedule_events")
+                .update({ is_closed: true, updated_at: new Date().toISOString() })
+                .eq("id", currentEventId);
+            if (error) { alert("失敗: " + error.message); return; }
+            await openEventDetail(currentEventId);
+        });
+
+        // 削除
+        document.getElementById("detail-delete-btn").addEventListener("click", async () => {
+            if (!confirm("この日程調整を削除しますか？関連する回答もすべて削除されます。")) return;
+            const { error } = await dbClient
+                .from("schedule_events")
+                .delete()
+                .eq("id", currentEventId);
+            if (error) { alert("削除失敗: " + error.message); return; }
+            document.getElementById("event-detail-section").classList.add("hidden");
+            document.getElementById("event-list-section").classList.remove("hidden");
+            currentEventId = null;
+            loadEvents();
+        });
+
+        // ---- 新規作成モーダル ----
+        let slotCount = 0;
+
+        function addSlotInput() {
+            slotCount++;
+            const div = document.createElement("div");
+            div.className = "flex items-center gap-2 flex-wrap slot-row";
+            div.dataset.slotIndex = slotCount;
+            div.innerHTML = `
+                <input type="date" class="slot-date border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                <select class="slot-start-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="">--</option>
+                    ${Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join("")}
+                </select>
+                <select class="slot-start-m border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="">--</option>
+                    <option value="00">00</option><option value="15">15</option>
+                    <option value="30">30</option><option value="45">45</option>
+                </select>
+                <span class="text-sm text-gray-500">〜</span>
+                <select class="slot-end-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="">--</option>
+                    ${Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join("")}
+                </select>
+                <select class="slot-end-m border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="">--</option>
+                    <option value="00">00</option><option value="15">15</option>
+                    <option value="30">30</option><option value="45">45</option>
+                </select>
+                <button type="button" class="remove-slot-btn text-red-400 hover:text-red-600 text-sm px-1"><i class="fas fa-times"></i></button>
+            `;
+            div.querySelector(".remove-slot-btn").addEventListener("click", () => div.remove());
+            document.getElementById("slot-inputs").appendChild(div);
+        }
+
+        document.getElementById("add-slot-btn").addEventListener("click", addSlotInput);
+
+        function openCreateModal() {
+            document.getElementById("create-title").value = "";
+            document.getElementById("create-description").value = "";
+            document.getElementById("create-deadline").value = "";
+            document.getElementById("slot-inputs").innerHTML = "";
+            document.getElementById("create-message").classList.add("hidden");
+            slotCount = 0;
+            addSlotInput();
+            addSlotInput();
+            addSlotInput();
+            document.getElementById("create-modal").classList.remove("hidden");
+        }
+
+        function closeCreateModal() {
+            document.getElementById("create-modal").classList.add("hidden");
+        }
+
+        document.getElementById("new-event-btn").addEventListener("click", openCreateModal);
+        document.getElementById("create-modal-close").addEventListener("click", closeCreateModal);
+        document.getElementById("create-cancel-btn").addEventListener("click", closeCreateModal);
+        document.getElementById("create-modal").addEventListener("click", e => {
+            if (e.target === document.getElementById("create-modal")) closeCreateModal();
+        });
+
+        document.getElementById("create-save-btn").addEventListener("click", async () => {
+            const title = document.getElementById("create-title").value.trim();
+            const description = document.getElementById("create-description").value.trim();
+            const deadline = document.getElementById("create-deadline").value || null;
+            const msgEl = document.getElementById("create-message");
+
+            if (!title) {
+                msgEl.textContent = "タイトルを入力してください。";
+                msgEl.classList.remove("hidden");
+                return;
+            }
+
+            // スロット収集
+            const slotRows = document.querySelectorAll("#slot-inputs .slot-row");
+            const slots = [];
+            let sortOrder = 0;
+            for (const row of slotRows) {
+                const date = row.querySelector(".slot-date").value;
+                if (!date) continue;
+                const sh = row.querySelector(".slot-start-h").value;
+                const sm = row.querySelector(".slot-start-m").value;
+                const eh = row.querySelector(".slot-end-h").value;
+                const em = row.querySelector(".slot-end-m").value;
+                slots.push({
+                    slot_date: date,
+                    slot_start: (sh && sm) ? `${sh}:${sm}:00` : null,
+                    slot_end: (eh && em) ? `${eh}:${em}:00` : null,
+                    sort_order: sortOrder++
+                });
+            }
+
+            if (slots.length === 0) {
+                msgEl.textContent = "日程候補を1つ以上入力してください。";
+                msgEl.classList.remove("hidden");
+                return;
+            }
+
+            // イベント作成
+            const { data: evData, error: evErr } = await dbClient
+                .from("schedule_events")
+                .insert({
+                    title,
+                    description: description || null,
+                    deadline,
+                    created_by_email: currentUser.email,
+                    created_by_name: currentUser.name || currentUser.email,
+                    is_closed: false
+                })
+                .select("id")
+                .single();
+
+            if (evErr || !evData) {
+                msgEl.textContent = "作成失敗: " + (evErr && evErr.message);
+                msgEl.classList.remove("hidden");
+                return;
+            }
+
+            // スロット作成
+            const slotsPayload = slots.map(s => ({ ...s, event_id: evData.id }));
+            const { error: slotsErr } = await dbClient
+                .from("schedule_slots")
+                .insert(slotsPayload);
+
+            if (slotsErr) {
+                msgEl.textContent = "日程候補の保存失敗: " + slotsErr.message;
+                msgEl.classList.remove("hidden");
+                return;
+            }
+
+            closeCreateModal();
+            await openEventDetail(evData.id);
+            document.getElementById("event-list-section").classList.add("hidden");
+            document.getElementById("event-detail-section").classList.remove("hidden");
+        });
+
+        // ---- 初期化 ----
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            returnTo: "schedule.html",
+            onReady: async ({ client, session, profile }) => {
+                dbClient = client;
+                const sessionUser = session && session.user ? session.user : null;
+                currentUser = {
+                    email: (sessionUser && sessionUser.email) || (session && session.email) || (profile && profile.email) || "",
+                    name: (session && session.displayName) || (profile && profile.display_name) || ""
+                };
+                await loadEvents();
+            }
+        });
+    </script>
+</body>
+</html>
