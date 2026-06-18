@@ -2,12 +2,13 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://www.googleapis.com https://calendar.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com https://accounts.google.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://calendar.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
     <meta http-equiv="Cache-Control" content="no-store, max-age=0">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>南国市議会DXポータル | デジタル執務室</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="bg-gray-50 text-gray-800">
 
@@ -613,20 +614,38 @@
                 .replace(/'/g, "&#39;");
         }
 
-        async function getGoogleProviderToken(client) {
-            const { data, error } = await client.auth.getSession();
-            if (!error && data && data.session && data.session.provider_token) {
-                localStorage.setItem("portal_google_provider_token", data.session.provider_token);
-                return data.session.provider_token;
-            }
+        let _gisTokenClient = null;
+        let _gisAccessToken = null;
+        let _gisTokenExpiry = 0;
 
-            const { data: refreshedData, error: refreshError } = await client.auth.refreshSession();
-            if (!refreshError && refreshedData && refreshedData.session && refreshedData.session.provider_token) {
-                localStorage.setItem("portal_google_provider_token", refreshedData.session.provider_token);
-                return refreshedData.session.provider_token;
-            }
+        function _getGisTokenClient() {
+            if (_gisTokenClient) return _gisTokenClient;
+            const clientId = (typeof PORTAL_CONFIG !== "undefined" && PORTAL_CONFIG.googleClientId) || "";
+            if (!clientId) return null;
+            _gisTokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: "https://www.googleapis.com/auth/calendar",
+                callback: () => {}
+            });
+            return _gisTokenClient;
+        }
 
-            return localStorage.getItem("portal_google_provider_token") || null;
+        function getGoogleProviderToken(_client) {
+            return new Promise((resolve, reject) => {
+                const tc = _getGisTokenClient();
+                if (!tc) { reject(new Error("GIS not ready")); return; }
+                if (_gisAccessToken && Date.now() < _gisTokenExpiry) {
+                    resolve(_gisAccessToken);
+                    return;
+                }
+                tc.callback = (resp) => {
+                    if (resp.error) { reject(new Error(resp.error)); return; }
+                    _gisAccessToken = resp.access_token;
+                    _gisTokenExpiry = Date.now() + ((resp.expires_in || 3600) * 1000) - 60000;
+                    resolve(_gisAccessToken);
+                };
+                tc.requestAccessToken({ prompt: "" });
+            });
         }
 
         function buildFriendlyGoogleError(detailText) {
@@ -652,7 +671,7 @@
             }
 
             if (reason === "authError" || /invalid credentials|unauthenticated/i.test(message)) {
-                return "アプリ側のGoogle認証トークンが無効です。ブラウザのログイン状態とは別管理のため、ポータルで再ログインしてください。";
+                return "Google認証トークンが無効です。もう一度カレンダー登録を実行するとGoogle認証画面が表示されます。";
             }
 
             return message || "Google Calendar APIエラー";
