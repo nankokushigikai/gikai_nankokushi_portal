@@ -286,7 +286,7 @@
                 title,
                 content,
                 created_by_email: currentUser?.email || null,
-                created_by_name: currentUser?.user_metadata?.full_name || currentUser?.email || null,
+                created_by_name: currentUser?.name || currentUser?.email || null,
             });
             if (error) { msg.textContent = "投稿失敗: " + error.message; msg.classList.remove("hidden"); return; }
             msg.classList.add("hidden");
@@ -323,9 +323,13 @@
             minRole: "viewer",
             authTargetId: "authArea",
             returnTo: "committee-activity.html",
-            onReady: async ({ client, user }) => {
+            onReady: async ({ client, session, profile }) => {
                 dbClient = client;
-                currentUser = user;
+                const sessionUser = session && session.user ? session.user : null;
+                currentUser = {
+                    email: (sessionUser && sessionUser.email) || (session && session.email) || (profile && profile.email) || "",
+                    name: (session && session.displayName) || (profile && profile.display_name) || ""
+                };
                 initQuill();
                 switchTab("giun");
             }
