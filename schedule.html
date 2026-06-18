@@ -52,6 +52,9 @@
                     <i class="fas fa-chevron-left mr-1"></i>一覧に戻る
                 </button>
                 <div class="flex gap-2" id="detail-admin-buttons">
+                    <button id="detail-edit-btn" class="hidden bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                        <i class="fas fa-edit mr-1"></i>編集
+                    </button>
                     <button id="detail-close-btn-admin" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
                         <i class="fas fa-lock mr-1"></i>締め切る
                     </button>
@@ -139,6 +142,58 @@
             <div class="p-5 border-t border-gray-200 flex justify-end gap-3">
                 <button id="create-cancel-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
                 <button id="create-save-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">作成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 編集モーダル -->
+    <div id="edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div class="p-5 border-b border-gray-200 flex items-center justify-between">
+                <h2 class="text-lg font-bold text-gray-800">日程調整を編集</h2>
+                <button id="edit-modal-close" class="text-gray-400 hover:text-gray-600 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1 space-y-4">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">タイトル <span class="text-red-500">*</span></label>
+                    <input id="edit-title" type="text" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">説明（任意）</label>
+                    <textarea id="edit-description" rows="2" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">回答期限（任意）</label>
+                    <input id="edit-deadline" type="date" class="mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700 block mb-2">日程候補</label>
+                    <div id="edit-slot-inputs" class="space-y-2 mb-2"></div>
+                    <button id="edit-add-slot-btn" type="button" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold">
+                        <i class="fas fa-plus mr-1"></i>候補を追加
+                    </button>
+                </div>
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <label class="text-sm font-semibold text-blue-800 block mb-2">対象者</label>
+                    <div class="flex gap-4 mb-3">
+                        <label class="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="edit-visibility" value="all" class="w-4 h-4"> 全員
+                        </label>
+                        <label class="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="radio" name="edit-visibility" value="specific" class="w-4 h-4"> 特定のメンバーのみ
+                        </label>
+                    </div>
+                    <div id="edit-members-section" class="hidden">
+                        <div id="edit-member-list" class="border border-gray-300 rounded-lg p-3 max-h-40 overflow-y-auto bg-white">
+                            <p class="text-xs text-gray-400">読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+                <p id="edit-message" class="text-sm text-red-600 hidden"></p>
+            </div>
+            <div class="p-5 border-t border-gray-200 flex justify-end gap-3">
+                <button id="edit-cancel-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
+                <button id="edit-save-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-semibold">保存</button>
             </div>
         </div>
     </div>
@@ -289,6 +344,8 @@
                 ev.visibility === "specific" ? `対象: ${recipients.length}名` : "対象: 全員";
 
             const isCreator = ev.created_by_email === currentUser.email;
+            editCurrentEvent = ev;
+            document.getElementById("detail-edit-btn").classList.toggle("hidden", !isCreator || ev.is_closed);
             document.getElementById("detail-delete-btn").classList.toggle("hidden", !isCreator);
             document.getElementById("detail-close-btn-admin").classList.toggle("hidden", !isCreator || ev.is_closed);
 
@@ -458,6 +515,163 @@
             document.getElementById("event-list-section").classList.remove("hidden");
             currentEventId = null;
             loadEvents();
+        });
+
+        // ---- 編集モーダル ----
+        let editCurrentEvent = null;
+        let editRemovedSlotIds = [];
+
+        function makeSlotRow(containerId, slotId, date, startH, startM, endH, endM) {
+            const hoursOpts = Array.from({length:24},(_,h)=>`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join("");
+            const div = document.createElement("div");
+            div.className = "flex items-center gap-2 flex-wrap edit-slot-row";
+            if (slotId) div.dataset.slotId = slotId;
+            div.innerHTML = `
+                <input type="date" class="slot-date border border-gray-300 rounded-lg px-2 py-1.5 text-sm" value="${date || ""}">
+                <select class="slot-start-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm"><option value="">--</option>${hoursOpts}</select>
+                <select class="slot-start-m border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="">--</option><option value="00">00</option><option value="15">15</option>
+                    <option value="30">30</option><option value="45">45</option>
+                </select>
+                <span class="text-sm text-gray-500">〜</span>
+                <select class="slot-end-h border border-gray-300 rounded-lg px-2 py-1.5 text-sm"><option value="">--</option>${hoursOpts}</select>
+                <select class="slot-end-m border border-gray-300 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="">--</option><option value="00">00</option><option value="15">15</option>
+                    <option value="30">30</option><option value="45">45</option>
+                </select>
+                <button type="button" class="remove-edit-slot-btn text-red-400 hover:text-red-600 text-sm px-1"><i class="fas fa-times"></i></button>`;
+            div.querySelector(".slot-start-h").value = startH || "";
+            div.querySelector(".slot-start-m").value = startM || "";
+            div.querySelector(".slot-end-h").value = endH || "";
+            div.querySelector(".slot-end-m").value = endM || "";
+            div.querySelector(".remove-edit-slot-btn").addEventListener("click", () => {
+                if (slotId) editRemovedSlotIds.push(slotId);
+                div.remove();
+            });
+            document.getElementById(containerId).appendChild(div);
+        }
+
+        async function openEditModal() {
+            editRemovedSlotIds = [];
+            const ev = editCurrentEvent;
+            document.getElementById("edit-title").value = ev.title || "";
+            document.getElementById("edit-description").value = ev.description || "";
+            document.getElementById("edit-deadline").value = ev.deadline || "";
+            document.getElementById("edit-message").classList.add("hidden");
+
+            // visibility
+            const vis = ev.visibility || "all";
+            document.querySelector(`input[name="edit-visibility"][value="${vis}"]`).checked = true;
+            document.getElementById("edit-members-section").classList.toggle("hidden", vis !== "specific");
+
+            // 既存スロットを描画
+            const container = document.getElementById("edit-slot-inputs");
+            container.innerHTML = "";
+            currentSlots.forEach(s => {
+                const sh = s.slot_start ? String(s.slot_start).slice(0,2) : "";
+                const sm = s.slot_start ? String(s.slot_start).slice(3,5) : "";
+                const eh = s.slot_end ? String(s.slot_end).slice(0,2) : "";
+                const em = s.slot_end ? String(s.slot_end).slice(3,5) : "";
+                makeSlotRow("edit-slot-inputs", s.id, s.slot_date, sh, sm, eh, em);
+            });
+
+            // 対象者チェックボックス描画
+            renderEditMemberList(ev.id);
+
+            document.getElementById("edit-modal").classList.remove("hidden");
+        }
+
+        async function renderEditMemberList(eventId) {
+            const container = document.getElementById("edit-member-list");
+            if (allMembers.length === 0) { container.innerHTML = '<p class="text-xs text-gray-400">メンバーが読み込まれていません。</p>'; return; }
+            const { data: existing } = await dbClient.from("schedule_recipients").select("member_email").eq("event_id", eventId);
+            const existingEmails = new Set((existing || []).map(r => r.member_email));
+            container.innerHTML = allMembers.map(m => `
+                <label class="flex items-center gap-2 py-1 hover:bg-gray-50 rounded cursor-pointer">
+                    <input type="checkbox" value="${escapeHtml(m.email)}" class="edit-member-cb w-4 h-4" ${existingEmails.has(m.email) ? "checked" : ""}>
+                    <span class="text-sm text-gray-700">${escapeHtml(m.full_name)} (${escapeHtml(m.email)})</span>
+                </label>`).join("");
+        }
+
+        document.querySelectorAll('input[name="edit-visibility"]').forEach(radio => {
+            radio.addEventListener("change", () => {
+                document.getElementById("edit-members-section").classList.toggle("hidden", radio.value !== "specific");
+                if (radio.value === "specific" && editCurrentEvent) renderEditMemberList(editCurrentEvent.id);
+            });
+        });
+
+        document.getElementById("edit-add-slot-btn").addEventListener("click", () => {
+            makeSlotRow("edit-slot-inputs", null, "", "", "", "", "");
+        });
+
+        function closeEditModal() { document.getElementById("edit-modal").classList.add("hidden"); }
+        document.getElementById("edit-modal-close").addEventListener("click", closeEditModal);
+        document.getElementById("edit-cancel-btn").addEventListener("click", closeEditModal);
+        document.getElementById("edit-modal").addEventListener("click", e => {
+            if (e.target === document.getElementById("edit-modal")) closeEditModal();
+        });
+
+        document.getElementById("detail-edit-btn").addEventListener("click", openEditModal);
+
+        document.getElementById("edit-save-btn").addEventListener("click", async () => {
+            const title = document.getElementById("edit-title").value.trim();
+            const description = document.getElementById("edit-description").value.trim();
+            const deadline = document.getElementById("edit-deadline").value || null;
+            const visibility = document.querySelector('input[name="edit-visibility"]:checked').value;
+            const msgEl = document.getElementById("edit-message");
+
+            if (!title) { msgEl.textContent = "タイトルを入力してください。"; msgEl.classList.remove("hidden"); return; }
+
+            // スロット収集
+            const rows = document.querySelectorAll("#edit-slot-inputs .edit-slot-row");
+            const newSlots = [];
+            let sortOrder = 0;
+            rows.forEach(row => {
+                const date = row.querySelector(".slot-date").value;
+                if (!date) return;
+                const sh = row.querySelector(".slot-start-h").value;
+                const sm = row.querySelector(".slot-start-m").value;
+                const eh = row.querySelector(".slot-end-h").value;
+                const em = row.querySelector(".slot-end-m").value;
+                const existingId = row.dataset.slotId ? Number(row.dataset.slotId) : null;
+                newSlots.push({ id: existingId, slot_date: date, slot_start: (sh && sm) ? `${sh}:${sm}:00` : null, slot_end: (eh && em) ? `${eh}:${em}:00` : null, sort_order: sortOrder++ });
+            });
+
+            if (newSlots.length === 0) { msgEl.textContent = "日程候補を1つ以上入力してください。"; msgEl.classList.remove("hidden"); return; }
+
+            let selectedEmails = [];
+            if (visibility === "specific") {
+                document.querySelectorAll(".edit-member-cb:checked").forEach(cb => selectedEmails.push(cb.value));
+                if (selectedEmails.length === 0) { msgEl.textContent = "対象メンバーを選択してください。"; msgEl.classList.remove("hidden"); return; }
+            }
+
+            // イベント更新
+            const { error: evErr } = await dbClient.from("schedule_events")
+                .update({ title, description: description || null, deadline, visibility, updated_at: new Date().toISOString() })
+                .eq("id", currentEventId);
+            if (evErr) { msgEl.textContent = "更新失敗: " + evErr.message; msgEl.classList.remove("hidden"); return; }
+
+            // 削除されたスロットを削除
+            if (editRemovedSlotIds.length > 0) {
+                await dbClient.from("schedule_slots").delete().in("id", editRemovedSlotIds);
+            }
+
+            // 新規スロットを追加、既存スロットを更新
+            const toInsert = newSlots.filter(s => !s.id).map(({id: _id, ...s}) => ({ ...s, event_id: currentEventId }));
+            const toUpdate = newSlots.filter(s => s.id);
+            if (toInsert.length > 0) await dbClient.from("schedule_slots").insert(toInsert);
+            for (const s of toUpdate) {
+                await dbClient.from("schedule_slots").update({ slot_date: s.slot_date, slot_start: s.slot_start, slot_end: s.slot_end, sort_order: s.sort_order }).eq("id", s.id);
+            }
+
+            // 対象者を更新（一旦全削除して再挿入）
+            await dbClient.from("schedule_recipients").delete().eq("event_id", currentEventId);
+            if (visibility === "specific" && selectedEmails.length > 0) {
+                await dbClient.from("schedule_recipients").insert(selectedEmails.map(email => ({ event_id: currentEventId, member_email: email })));
+            }
+
+            closeEditModal();
+            await openEventDetail(currentEventId);
         });
 
         // ---- 新規作成モーダル ----
