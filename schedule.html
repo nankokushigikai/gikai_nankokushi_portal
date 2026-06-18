@@ -238,6 +238,14 @@
             return `${date} ${start}${end}`;
         }
 
+        function formatSlotLabelHtml(slot) {
+            const date = escapeHtml(formatDate(slot.slot_date));
+            if (!slot.slot_start) return `<span>${date}</span>`;
+            const start = String(slot.slot_start).slice(0, 5);
+            const end = slot.slot_end ? "〜" + String(slot.slot_end).slice(0, 5) : "";
+            return `<span class="block">${date}</span><span class="block">${escapeHtml(start + end)}</span>`;
+        }
+
         async function loadMembers() {
             const { data } = await dbClient
                 .from("member_directory")
@@ -335,7 +343,8 @@
 
             document.getElementById("detail-title").textContent = ev.title;
             document.getElementById("detail-description").textContent = ev.description || "";
-            document.getElementById("detail-deadline").textContent = ev.deadline ? "回答期限: " + formatDate(ev.deadline) : "";
+            document.getElementById("detail-deadline").innerHTML = ev.deadline
+                ? `<span class="text-red-600 font-bold text-base">回答期限: ${escapeHtml(formatDate(ev.deadline))}</span>` : "";
             document.getElementById("detail-creator").textContent = "作成者: " + (ev.created_by_name || ev.created_by_email || "");
             document.getElementById("detail-status").innerHTML = ev.is_closed
                 ? `<span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs">締め切り済み</span>`
@@ -383,7 +392,7 @@
                 <thead>
                     <tr class="border-b-2 border-gray-300">
                         <th class="${thClass} text-left text-gray-700 min-w-[100px]">氏名</th>
-                        ${currentSlots.map(s => `<th class="${thClass} text-gray-700">${escapeHtml(formatSlotLabel(s))}</th>`).join("")}
+                        ${currentSlots.map(s => `<th class="${thClass} text-gray-700">${formatSlotLabelHtml(s)}</th>`).join("")}
                     </tr>
                 </thead>
                 <tbody>`;
@@ -438,7 +447,7 @@
             slotsDiv.innerHTML = currentSlots.map(s => {
                 const current = myExisting[s.id] || "";
                 return `<div class="flex items-center gap-3 flex-wrap py-1">
-                    <span class="text-sm text-gray-700 min-w-[220px]">${escapeHtml(formatSlotLabel(s))}</span>
+                    <span class="text-sm text-gray-700 min-w-[160px]">${formatSlotLabelHtml(s)}</span>
                     <div class="flex gap-2">
                         ${["circle","triangle","cross"].map(val => {
                             const active = current === val;
