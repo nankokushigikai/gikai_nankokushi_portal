@@ -84,8 +84,31 @@
                 </label>
             </div>
 
-            <div id="bills-list" class="space-y-4">
-                <p class="text-gray-400 text-sm">読み込み中...</p>
+            <!-- 一覧テーブル -->
+            <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100 text-gray-600">
+                        <tr>
+                            <th class="text-left px-4 py-3 w-32">作成日</th>
+                            <th class="text-left px-4 py-3">タイトル</th>
+                            <th class="text-center px-4 py-3 w-24">完了</th>
+                            <th class="text-center px-4 py-3 w-24">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bills-list">
+                        <tr><td colspan="4" class="px-4 py-6 text-gray-400 text-center">読み込み中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 詳細パネル -->
+            <div id="bill-detail-panel" class="hidden mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 id="detail-title" class="text-lg font-bold text-gray-800"></h3>
+                    <button type="button" id="close-detail-btn" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+                </div>
+                <div class="text-xs text-gray-400 mb-4" id="detail-meta"></div>
+                <div id="detail-content" class="text-sm text-gray-900 ql-editor border-none" style="padding:0"></div>
             </div>
         </section>
 
@@ -183,51 +206,69 @@
 
         function renderBills() {
             const filter = document.querySelector('input[name="bill-filter"]:checked').value;
-            const list = document.getElementById("bills-list");
+            const tbody = document.getElementById("bills-list");
             const filtered = allBills.filter(b => {
                 if (filter === "active") return !b.is_completed;
                 if (filter === "completed") return b.is_completed;
                 return true;
             });
 
+            // 詳細パネルを閉じる
+            document.getElementById("bill-detail-panel").classList.add("hidden");
+
             if (filtered.length === 0) {
-                list.innerHTML = '<p class="text-gray-400 text-sm">議案はまだありません。</p>';
+                tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-gray-400 text-center">議案はまだありません。</td></tr>';
                 return;
             }
 
-            list.innerHTML = filtered.map(b => `
-                <div class="bg-white rounded-xl shadow-sm border ${b.is_completed ? 'border-green-300 bg-green-50' : 'border-gray-200'} p-5">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="flex items-center gap-3 flex-1 min-w-0">
-                            <button type="button" class="toggle-complete-btn flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition
-                                ${b.is_completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-400'}"
-                                data-id="${b.id}" data-completed="${b.is_completed}" title="${b.is_completed ? '完了を解除' : '完了にする'}">
-                                ${b.is_completed ? '<i class="fas fa-check text-xs"></i>' : ''}
-                            </button>
-                            <h3 class="font-semibold text-gray-800 truncate ${b.is_completed ? 'line-through text-gray-400' : ''}">${escapeHtml(b.title)}</h3>
-                        </div>
-                        <div class="flex gap-2 flex-shrink-0">
-                            <button type="button" class="edit-bill-btn text-indigo-600 hover:text-indigo-800 text-xs font-semibold" data-id="${b.id}">編集</button>
-                            <button type="button" class="delete-bill-btn text-rose-600 hover:text-rose-800 text-xs font-semibold" data-id="${b.id}">削除</button>
-                        </div>
-                    </div>
-                    ${b.content ? `<div class="mt-3 text-sm text-gray-900 ql-editor p-0 border-none" style="padding:0">${b.content}</div>` : ''}
-                    <div class="mt-2 text-xs text-gray-400">
-                        ${b.created_by_name ? escapeHtml(b.created_by_name) + ' ・ ' : ''}${new Date(b.created_at).toLocaleDateString('ja-JP')}
-                        ${b.is_completed && b.completed_at ? ' ・ 完了: ' + new Date(b.completed_at).toLocaleDateString('ja-JP') : ''}
-                    </div>
-                </div>
+            tbody.innerHTML = filtered.map(b => `
+                <tr class="bill-row border-t border-gray-100 hover:bg-teal-50 cursor-pointer transition ${b.is_completed ? 'bg-green-50' : 'bg-white'}"
+                    data-id="${b.id}">
+                    <td class="px-4 py-3 text-gray-500 whitespace-nowrap">${new Date(b.created_at).toLocaleDateString('ja-JP')}</td>
+                    <td class="px-4 py-3 font-medium ${b.is_completed ? 'line-through text-gray-400' : 'text-gray-800'}">${escapeHtml(b.title)}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button type="button" class="toggle-complete-btn w-6 h-6 rounded-full border-2 inline-flex items-center justify-center transition
+                            ${b.is_completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-400'}"
+                            data-id="${b.id}" data-completed="${b.is_completed}" title="${b.is_completed ? '完了を解除' : '完了にする'}">
+                            ${b.is_completed ? '<i class="fas fa-check text-xs"></i>' : ''}
+                        </button>
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <button type="button" class="edit-bill-btn text-indigo-600 hover:text-indigo-800 text-xs font-semibold mr-2" data-id="${b.id}">編集</button>
+                        <button type="button" class="delete-bill-btn text-rose-600 hover:text-rose-800 text-xs font-semibold" data-id="${b.id}">削除</button>
+                    </td>
+                </tr>
             `).join("");
 
-            list.querySelectorAll(".toggle-complete-btn").forEach(btn => {
-                btn.addEventListener("click", () => toggleComplete(Number(btn.dataset.id), btn.dataset.completed === "true"));
+            tbody.querySelectorAll(".bill-row").forEach(row => {
+                row.addEventListener("click", (e) => {
+                    if (e.target.closest(".toggle-complete-btn") || e.target.closest(".edit-bill-btn") || e.target.closest(".delete-bill-btn")) return;
+                    openDetail(Number(row.dataset.id));
+                });
             });
-            list.querySelectorAll(".edit-bill-btn").forEach(btn => {
-                btn.addEventListener("click", () => openEditModal(Number(btn.dataset.id)));
+            tbody.querySelectorAll(".toggle-complete-btn").forEach(btn => {
+                btn.addEventListener("click", (e) => { e.stopPropagation(); toggleComplete(Number(btn.dataset.id), btn.dataset.completed === "true"); });
             });
-            list.querySelectorAll(".delete-bill-btn").forEach(btn => {
-                btn.addEventListener("click", () => deleteBill(Number(btn.dataset.id)));
+            tbody.querySelectorAll(".edit-bill-btn").forEach(btn => {
+                btn.addEventListener("click", (e) => { e.stopPropagation(); openEditModal(Number(btn.dataset.id)); });
             });
+            tbody.querySelectorAll(".delete-bill-btn").forEach(btn => {
+                btn.addEventListener("click", (e) => { e.stopPropagation(); deleteBill(Number(btn.dataset.id)); });
+            });
+        }
+
+        function openDetail(id) {
+            const b = allBills.find(x => x.id === id);
+            if (!b) return;
+            document.getElementById("detail-title").textContent = b.title;
+            document.getElementById("detail-meta").textContent =
+                (b.created_by_name ? b.created_by_name + ' ・ ' : '') +
+                new Date(b.created_at).toLocaleDateString('ja-JP') +
+                (b.is_completed && b.completed_at ? ' ・ 完了: ' + new Date(b.completed_at).toLocaleDateString('ja-JP') : '');
+            document.getElementById("detail-content").innerHTML = b.content || '<span class="text-gray-400">（内容なし）</span>';
+            const panel = document.getElementById("bill-detail-panel");
+            panel.classList.remove("hidden");
+            panel.scrollIntoView({ behavior: "smooth" });
         }
 
         async function toggleComplete(id, current) {
@@ -312,6 +353,10 @@
 
         document.getElementById("close-edit-modal-btn").addEventListener("click", () => {
             document.getElementById("edit-modal").classList.add("hidden");
+        });
+
+        document.getElementById("close-detail-btn").addEventListener("click", () => {
+            document.getElementById("bill-detail-panel").classList.add("hidden");
         });
         document.getElementById("edit-modal").addEventListener("click", e => {
             if (e.target === document.getElementById("edit-modal")) document.getElementById("edit-modal").classList.add("hidden");
