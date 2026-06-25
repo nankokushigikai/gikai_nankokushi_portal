@@ -116,6 +116,22 @@
         </div>
     </div>
 
+    <!-- 取消確認ダイアログ -->
+    <div id="cancel-confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h2 class="text-lg font-bold text-gray-800 mb-2">お知らせを取消にします</h2>
+            <p class="text-sm text-gray-600 mb-4">トップ画面では取消表示になります。Googleカレンダー連携済みの場合は共有予定も削除されます。</p>
+            <label class="flex items-center gap-3 mb-6 cursor-pointer select-none">
+                <input id="cancel-notify-checkbox" type="checkbox" checked class="w-4 h-4 accent-rose-600">
+                <span class="text-sm text-gray-700">対象者にメールで取消を通知する</span>
+            </label>
+            <div class="flex justify-end gap-3">
+                <button id="cancel-confirm-close" type="button" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold">キャンセル</button>
+                <button id="cancel-confirm-ok" type="button" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">取消する</button>
+            </div>
+        </div>
+    </div>
+
     <div id="announcement-edit-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <h2 class="text-lg font-bold text-gray-800 mb-4">お知らせを修正</h2>
@@ -703,6 +719,28 @@
             }
         }
 
+        function showCancelConfirmDialog(announcementNo) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById("cancel-confirm-modal");
+                const okBtn = document.getElementById("cancel-confirm-ok");
+                const closeBtn = document.getElementById("cancel-confirm-close");
+                const checkbox = document.getElementById("cancel-notify-checkbox");
+                checkbox.checked = true;
+                modal.classList.remove("hidden");
+
+                function cleanup(result) {
+                    modal.classList.add("hidden");
+                    okBtn.removeEventListener("click", onOk);
+                    closeBtn.removeEventListener("click", onClose);
+                    resolve(result);
+                }
+                function onOk() { cleanup({ confirmed: true, sendMail: checkbox.checked }); }
+                function onClose() { cleanup({ confirmed: false }); }
+                okBtn.addEventListener("click", onOk);
+                closeBtn.addEventListener("click", onClose);
+            });
+        }
+
         async function deleteAnnouncement(announcementNo) {
             const message = document.getElementById("announcement-message");
             const target = announcementByNo.get(Number(announcementNo));
@@ -711,10 +749,8 @@
                 return;
             }
 
-            const confirmed = window.confirm("このお知らせを取消にします。トップ画面では取消表示になり、Googleカレンダー連携済みの場合は共有予定を削除します。よろしいですか？");
-            if (!confirmed) {
-                return;
-            }
+            const { confirmed, sendMail } = await showCancelConfirmDialog(announcementNo);
+            if (!confirmed) return;
 
             if (target.google_calendar_event_id) {
                 const calendarDeleteResult = await deleteGoogleCalendarEvent(dbClient, target.google_calendar_event_id);
@@ -771,6 +807,63 @@
                 afterValue: "canceled",
                 note: `announcement_no=${target.no}; ${calendarState}`
             });
+
+            // 取消メール送信
+            if (sendMail) {
+                try {
+                    let recipientEmails = [];
+                    if (target.visibility === "specific") {
+                        const { data: recips } = await dbClient
+                            .from("announcement_recipients")
+                            .select("recipient_email")
+                            .eq("announcement_no", Number(announcementNo));
+                        recipientEmails = (recips || []).map(r => r.recipient_email).filter(Boolean);
+                    } else {
+                        recipientEmails = allMembers.map(m => normalizeEmail(m.email)).filter(Boolean);
+                    }
+
+                    if (recipientEmails.length > 0) {
+                        const dateLabel = (target.notice_date || "").replace(/-/g, "/");
+                        const portalTopUrl = (() => {
+                            const base = String((window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "").trim();
+                            return base ? new URL("index.html", `${base.replace(/\/+$/, "")}/`).toString()
+                                        : new URL("index.html", window.location.href).toString();
+                        })();
+                        const mailSubject = `【南国市議会DXポータル】お知らせ取消: ${target.title || ""}`;
+                        const mailBody = [
+                            `${currentOwnerName} さんがお知らせを取消にしました。`,
+                            "",
+                            `【日時】${dateLabel} ${String(target.start_time || "").slice(0, 5)}〜${String(target.end_time || "").slice(0, 5)}`,
+                            `【タイトル】${target.title || ""}`,
+                            target.content ? `【内容】${target.content}` : null,
+                            "",
+                            "このお知らせは取消になりました。カレンダーから削除してください。",
+                            "",
+                            "【南国市議会ポータルサイト】",
+                            portalTopUrl,
+                            "",
+                            "このメールはシステムから自動送信されています。"
+                        ].filter(line => line !== null).join("\n");
+
+                        const { error: mailError } = await dbClient.functions.invoke("mail-notice-send", {
+                            body: { toEmails: recipientEmails, subject: mailSubject, body: mailBody, senderName: currentOwnerName }
+                        });
+
+                        if (mailError) {
+                            message.textContent = "お知らせを取消にしましたが、メール送信に失敗しました。";
+                            await loadAnnouncements();
+                            return;
+                        }
+                        message.textContent = "お知らせを取消にしてメールを送信しました。";
+                        await loadAnnouncements();
+                        return;
+                    }
+                } catch (mailEx) {
+                    message.textContent = `お知らせを取消にしましたが、メール送信エラー: ${mailEx.message}`;
+                    await loadAnnouncements();
+                    return;
+                }
+            }
 
             message.textContent = "お知らせを取消にしました。";
             await loadAnnouncements();
