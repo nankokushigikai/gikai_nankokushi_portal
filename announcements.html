@@ -1633,7 +1633,7 @@
             personalCalendarAlertsByNo.clear();
             myPersonalCalendarLinksByNo.clear();
 
-            const baseSelect = "notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility,attendance_required,attendance_deadline,google_calendar_event_id,google_calendar_event_link,google_calendar_synced_at";
+            const baseSelect = "notice_date,start_time,end_time,title,content,owner_name,contact_phone,contact_email,remarks,no,visibility,attendance_required,attendance_deadline,google_calendar_event_id,google_calendar_event_link,google_calendar_synced_at,created_by_email";
             const enhancedBaseSelect = `${baseSelect},lifecycle_status,version_no,canceled_at,canceled_by_email,cancel_note`;
             const { data, error } = await dbClient
                 .from("announcements")
@@ -1775,7 +1775,9 @@
                 announcementByNo.set(Number(item.no), item);
                 const card = document.createElement("article");
                 card.className = "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition";
-                const canEdit = currentRole === "admin";
+                const canEdit = currentRole === "admin"
+                    || (currentUserEmail && item.created_by_email
+                        && item.created_by_email.toLowerCase().trim() === currentUserEmail.toLowerCase().trim());
                 const noValue = Number(item.no);
                 const myResponse = myAttendanceByNo.get(noValue);
                 const currentStatus = myResponse ? myResponse.status : "unanswered";
