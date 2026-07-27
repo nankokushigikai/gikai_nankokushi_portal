@@ -1558,3 +1558,11 @@ create policy schedule_recipients_delete_authenticated on public.schedule_recipi
 for delete using (auth.uid() is not null);
 
 notify pgrst, 'reload schema';
+
+-- 日程調整：自動締め切り・決定日程
+alter table public.schedule_events
+    add column if not exists auto_close boolean not null default false;
+alter table public.schedule_events
+    add column if not exists decided_slot_id bigint references public.schedule_slots(id);
+
+notify pgrst, 'reload schema';
