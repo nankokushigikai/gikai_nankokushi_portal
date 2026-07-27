@@ -4,6 +4,9 @@ seimukatudouhi-app/.next/
 seimukatudouhi-app/.vercel/
 seimukatudouhi-app/.env.local
 
+# Secrets (local-only credential notes)
+.重要/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
