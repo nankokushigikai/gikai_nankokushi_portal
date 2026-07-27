@@ -728,8 +728,58 @@
                 }
             }
 
-            // メール送信
             const recipientEmails = getRecipientEmails(visibility, selectedMembers);
+            let calendarNote = "";
+
+            // Googleカレンダー同期（ゲスト招待方式）: メール送信と同じタイミングで自動登録。
+            // 配信対象者をゲストに追加するので visibility='specific' でも対象議員だけに反映される。
+            if (announcementNo && recipientEmails.length > 0) {
+                try {
+                    const descriptionLines = [
+                        payload.content || "",
+                        payload.contact_phone ? `連絡先電話: ${payload.contact_phone}` : "",
+                        payload.contact_email ? `連絡先メール: ${payload.contact_email}` : "",
+                        payload.remarks ? `備考: ${payload.remarks}` : "",
+                        payload.attendance_required ? "出欠確認あり（回答はポータルで行ってください）" : ""
+                    ].filter(Boolean);
+
+                    const { data: calData, error: calError } = await dbClient.functions.invoke("announcement-calendar-sync", {
+                        body: {
+                            action: "upsert",
+                            event: {
+                                summary: payload.title,
+                                description: descriptionLines.join("\n"),
+                                startDateTime: buildCalendarDateTime(payload.notice_date, payload.start_time),
+                                endDateTime: buildCalendarDateTime(payload.notice_date, payload.end_time),
+                                attendees: recipientEmails,
+                                reminderMinutes: [60, 30]
+                            }
+                        }
+                    });
+
+                    if (calError || !(calData && calData.ok)) {
+                        console.warn("カレンダー同期エラー:", calError || calData);
+                        calendarNote = "（Googleカレンダー登録に失敗しました。設定をご確認ください）";
+                    } else if (calData.eventId) {
+                        const { error: linkError } = await dbClient
+                            .from("announcements")
+                            .update({
+                                google_calendar_event_id: calData.eventId,
+                                google_calendar_event_link: calData.htmlLink || null,
+                                google_calendar_synced_at: new Date().toISOString()
+                            })
+                            .eq("no", announcementNo);
+                        if (linkError) {
+                            console.warn("カレンダーイベントIDの保存に失敗:", linkError.message);
+                        }
+                    }
+                } catch (calEx) {
+                    console.warn("カレンダー同期例外:", calEx);
+                    calendarNote = "（Googleカレンダー登録に失敗しました。設定をご確認ください）";
+                }
+            }
+
+            // メール送信
             if (recipientEmails.length > 0) {
                 try {
                     const dateLabel = payload.notice_date.replace(/-/g, "/");
@@ -780,7 +830,7 @@
                 }
             }
 
-            document.getElementById("announcement-message").textContent = "登録しました。";
+            document.getElementById("announcement-message").textContent = `登録しました。${calendarNote}`;
             clearForm();
         }
 
