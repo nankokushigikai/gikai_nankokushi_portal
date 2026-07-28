@@ -1111,9 +1111,9 @@
             const isGiun = document.getElementById("is_giun").value === "true";
             const isEditorialCommittee = document.getElementById("is_editorial_committee").value === "true";
             const isDxSuishin = document.getElementById("is_dx_suishin").value === "true";
-            const giunRole = isGiun ? normalizeMemberRole(document.getElementById("giun_role").value) : null;
-            const editorialRole = isEditorialCommittee ? normalizeMemberRole(document.getElementById("editorial_role").value) : null;
-            const dxSuishinRole = isDxSuishin ? normalizeMemberRole(document.getElementById("dx_suishin_role").value) : null;
+            const giunRole = isGiun ? (normalizeMemberRole(document.getElementById("giun_role").value) || null) : null;
+            const editorialRole = isEditorialCommittee ? (normalizeMemberRole(document.getElementById("editorial_role").value) || null) : null;
+            const dxSuishinRole = isDxSuishin ? (normalizeMemberRole(document.getElementById("dx_suishin_role").value) || null) : null;
 
             const payload = {
                 member_id: currentMemberId,
