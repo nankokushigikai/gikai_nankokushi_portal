@@ -176,6 +176,21 @@
                         <option value="委員">委員</option>
                     </select>
                 </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">DX推進委員 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
+                    <select id="is_dx_suishin" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="true">YES</option>
+                        <option value="false" selected>NO</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">DX推進委員の役職 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
+                    <select id="dx_suishin_role" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="">未設定</option>
+                        <option value="委員長">委員長</option>
+                        <option value="委員">委員</option>
+                    </select>
+                </div>
                 <div class="md:col-span-2">
                     <label class="text-sm font-semibold text-gray-700 flex items-center gap-2">議員写真 <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">任意</span></label>
                     <div class="mt-1 flex flex-col sm:flex-row gap-2">
@@ -245,6 +260,8 @@
                             <th class="text-left p-2 border">議運役職</th>
                             <th class="text-left p-2 border">編集委員</th>
                             <th class="text-left p-2 border">編集委員の役職</th>
+                            <th class="text-left p-2 border">DX推進委員</th>
+                            <th class="text-left p-2 border">DX推進委員の役職</th>
                             <th class="text-left p-2 border">操作</th>
                         </tr>
                     </thead>
@@ -277,6 +294,12 @@
                 <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
                     <h3 class="text-sm font-bold text-gray-700 mb-2">編集委員会</h3>
                     <ul id="editorial-summary-list" class="text-sm text-gray-700 space-y-1">
+                        <li class="text-gray-500">データを読み込み中です...</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">DX推進委員会</h3>
+                    <ul id="dx-suishin-summary-list" class="text-sm text-gray-700 space-y-1">
                         <li class="text-gray-500">データを読み込み中です...</li>
                     </ul>
                 </div>
@@ -820,10 +843,23 @@
                 ...(editorialOthers.length > 0 ? editorialOthers : ["委員："])
             ];
 
+            const dxSuishinMembers = rows
+                .filter((item) => item.is_dx_suishin)
+                .sort(compareMembersBySeat);
+            const dxSuishinChair = dxSuishinMembers.find((item) => normalizeMemberRole(item.dx_suishin_role) === "委員長");
+            const dxSuishinOthers = dxSuishinMembers
+                .filter((item) => !dxSuishinChair || item.member_id !== dxSuishinChair.member_id)
+                .map((item, index) => `${index === 0 ? "委員" : "　　"}：${escapeHtml(item.full_name)}`);
+            const dxSuishinLines = [
+                `委員長：${dxSuishinChair ? escapeHtml(dxSuishinChair.full_name) : ""}`,
+                ...(dxSuishinOthers.length > 0 ? dxSuishinOthers : ["委員："])
+            ];
+
             renderList("leaders-summary-list", leaders, "該当者はいません。");
             renderList("giun-summary-list", giunLines, "該当者はいません。");
             renderCommitteeBlocks("committee-summary-list", committees, "委員会データはありません。");
             renderList("editorial-summary-list", editorialLines, "該当者はいません。");
+            renderList("dx-suishin-summary-list", dxSuishinLines, "該当者はいません。");
         }
 
         function normalizePosition(category, positionName) {
@@ -949,6 +985,8 @@
             document.getElementById("giun_role").value = normalizeMemberRole(item.giun_role || item.committee_role);
             document.getElementById("is_editorial_committee").value = item.is_editorial_committee ? "true" : "false";
             document.getElementById("editorial_role").value = normalizeMemberRole(item.editorial_role || item.committee_role);
+            document.getElementById("is_dx_suishin").value = item.is_dx_suishin ? "true" : "false";
+            document.getElementById("dx_suishin_role").value = normalizeMemberRole(item.dx_suishin_role);
             document.getElementById("kaiha").value = item.kaiha || "";
             document.getElementById("notes").value = item.notes || "";
             setPhotoPreviewFromExistingPath(item.photo_path || "");
@@ -970,7 +1008,7 @@
         async function loadMembers() {
             const { data, error } = await dbClient
                 .from("member_directory")
-                .select("member_id,full_name,photo_path,furigana,seat_number,is_current,access_role,category,position_name,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role,kaiha")
+                .select("member_id,full_name,photo_path,furigana,seat_number,is_current,access_role,category,position_name,committee,committee_role,is_giun,giun_role,is_editorial_committee,editorial_role,is_dx_suishin,dx_suishin_role,kaiha")
                 .order("member_id", { ascending: true });
 
             const tbody = document.getElementById("member-list");
@@ -1006,6 +1044,8 @@
                     <td class="p-2 border">${item.giun_role || ""}</td>
                     <td class="p-2 border">${toYesNo(item.is_editorial_committee)}</td>
                     <td class="p-2 border">${item.editorial_role || ""}</td>
+                    <td class="p-2 border">${toYesNo(item.is_dx_suishin)}</td>
+                    <td class="p-2 border">${item.dx_suishin_role || ""}</td>
                     <td class="p-2 border">
                         <button class="text-indigo-700 hover:text-indigo-900 mr-3" data-edit="${item.member_id}">編集</button>
                         <button class="text-rose-700 hover:text-rose-900" data-delete="${item.member_id}">削除</button>
@@ -1070,8 +1110,10 @@
             const accessRole = document.getElementById("access_role").value;
             const isGiun = document.getElementById("is_giun").value === "true";
             const isEditorialCommittee = document.getElementById("is_editorial_committee").value === "true";
+            const isDxSuishin = document.getElementById("is_dx_suishin").value === "true";
             const giunRole = isGiun ? normalizeMemberRole(document.getElementById("giun_role").value) : null;
             const editorialRole = isEditorialCommittee ? normalizeMemberRole(document.getElementById("editorial_role").value) : null;
+            const dxSuishinRole = isDxSuishin ? normalizeMemberRole(document.getElementById("dx_suishin_role").value) : null;
 
             const payload = {
                 member_id: currentMemberId,
@@ -1093,6 +1135,8 @@
                 giun_role: giunRole,
                 is_editorial_committee: isEditorialCommittee,
                 editorial_role: editorialRole,
+                is_dx_suishin: isDxSuishin,
+                dx_suishin_role: dxSuishinRole,
                 photo_path: currentPhotoPath || null,
                 kaiha: document.getElementById("kaiha").value.trim() || null,
                 notes: document.getElementById("notes").value.trim() || null,

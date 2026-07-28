@@ -297,7 +297,7 @@
         async function loadMembers() {
             const { data } = await dbClient
                 .from("member_directory")
-                .select("email,full_name,seat_number,category,position_name,committee,is_giun,is_editorial_committee,kaiha")
+                .select("email,full_name,seat_number,category,position_name,committee,is_giun,is_editorial_committee,is_dx_suishin,kaiha")
                 .eq("is_current", true)
                 .order("seat_number", { ascending: true, nullsFirst: false });
             allMembers = data || [];
@@ -309,7 +309,8 @@
             { id: "soumu",     label: "総務委員会" },
             { id: "sangyo",    label: "産業建設委員会" },
             { id: "kyoiku",    label: "教育民生委員会" },
-            { id: "editorial", label: "編集委員会" }
+            { id: "editorial", label: "編集委員会" },
+            { id: "dx_suishin", label: "DX推進委員" }
         ];
 
         function normalizeText(v) { return String(v || "").replace(/\s+/g, "").trim(); }
@@ -323,6 +324,7 @@
             if (groupId === "sangyo")    return com.includes("産業建設委員会");
             if (groupId === "kyoiku")    return com.includes("教育民生委員会");
             if (groupId === "editorial") return Boolean(member.is_editorial_committee);
+            if (groupId === "dx_suishin") return Boolean(member.is_dx_suishin);
             if (groupId === "kaiha_none") return !member.kaiha;
             if (groupId.startsWith("kaiha:")) return member.kaiha === groupId.slice(6);
             return false;

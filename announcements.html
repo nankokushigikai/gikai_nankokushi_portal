@@ -266,7 +266,8 @@
             { id: "soumu", label: "総務委員会" },
             { id: "sangyo", label: "産業建設委員会" },
             { id: "kyoiku", label: "教育民生委員会" },
-            { id: "editorial", label: "編集委員会" }
+            { id: "editorial", label: "編集委員会" },
+            { id: "dx_suishin", label: "DX推進委員" }
         ];
 
         function escapeHtml(value) {
@@ -1345,6 +1346,9 @@
             if (groupId === "editorial") {
                 return Boolean(member.is_editorial_committee);
             }
+            if (groupId === "dx_suishin") {
+                return Boolean(member.is_dx_suishin);
+            }
 
             return false;
         }
@@ -2284,7 +2288,7 @@
                 // メンバーを読み込む
                 const { data: members } = await dbClient
                     .from("member_directory")
-                    .select("email, full_name, mobile, seat_number, category, position_name, committee, is_giun, is_editorial_committee")
+                    .select("email, full_name, mobile, seat_number, category, position_name, committee, is_giun, is_editorial_committee, is_dx_suishin")
                     .eq("is_current", true)
                     .order("seat_number", { ascending: true, nullsFirst: false })
                     .order("full_name", { ascending: true });

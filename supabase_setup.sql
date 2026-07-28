@@ -182,6 +182,8 @@ create table if not exists public.member_directory (
     giun_role text check (giun_role in ('委員長', '委員')),
     is_editorial_committee boolean not null default false,
     editorial_role text check (editorial_role in ('委員長', '委員')),
+    is_dx_suishin boolean not null default false,
+    dx_suishin_role text check (dx_suishin_role in ('委員長', '委員')),
     notes text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()
@@ -413,6 +415,8 @@ alter table public.member_directory add column if not exists seat_number int;
 alter table public.member_directory add column if not exists photo_path text;
 alter table public.member_directory add column if not exists giun_role text;
 alter table public.member_directory add column if not exists editorial_role text;
+alter table public.member_directory add column if not exists is_dx_suishin boolean not null default false;
+alter table public.member_directory add column if not exists dx_suishin_role text;
 alter table public.committee_activity_posts add column if not exists created_by_user_id uuid;
 
 update public.committee_activity_posts p
@@ -431,6 +435,11 @@ update public.member_directory
 set editorial_role = null
 where editorial_role is not null
   and editorial_role not in ('委員長', '委員');
+
+update public.member_directory
+set dx_suishin_role = null
+where dx_suishin_role is not null
+  and dx_suishin_role not in ('委員長', '委員');
 
 update public.member_directory
 set seat_number = null
@@ -457,6 +466,16 @@ begin
         alter table public.member_directory
             add constraint member_directory_editorial_role_check
             check (editorial_role is null or editorial_role in ('委員長', '委員'));
+    end if;
+
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'member_directory_dx_suishin_role_check'
+    ) then
+        alter table public.member_directory
+            add constraint member_directory_dx_suishin_role_check
+            check (dx_suishin_role is null or dx_suishin_role in ('委員長', '委員'));
     end if;
 
     if not exists (
