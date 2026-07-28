@@ -172,7 +172,7 @@ create table if not exists public.member_directory (
     address text,
     phone text,
     mobile text,
-    category text not null check (category in ('議員', '職員')),
+    category text not null check (category in ('議員', '職員', '議会職員', '市職員')),
     position_name text,
     access_role text not null default '使用者' check (access_role in ('管理者', '使用者')),
     email text,
@@ -477,6 +477,12 @@ begin
             add constraint member_directory_dx_suishin_role_check
             check (dx_suishin_role is null or dx_suishin_role in ('委員長', '委員'));
     end if;
+
+    -- 区分：画面が「議会職員」「市職員」を選択肢に持つため、旧制約(議員/職員のみ)を緩和
+    alter table public.member_directory drop constraint if exists member_directory_category_check;
+    alter table public.member_directory
+        add constraint member_directory_category_check
+        check (category in ('議員', '職員', '議会職員', '市職員'));
 
     if not exists (
         select 1
