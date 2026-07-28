@@ -25,7 +25,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
 
 type CalendarSyncPayload = {
-  action?: "upsert" | "delete";
+  action?: "upsert" | "delete" | "respond";
   eventId?: string;
   sendUpdates?: "all" | "none" | "externalOnly";
   event?: {
@@ -37,6 +37,14 @@ type CalendarSyncPayload = {
     attendees?: string[];
     reminderMinutes?: number[];
   };
+  attendeeEmail?: string;
+  status?: "attend" | "absent" | "pending";
+};
+
+const RESPONSE_STATUS_BY_PORTAL_STATUS: Record<string, string> = {
+  attend: "accepted",
+  absent: "declined",
+  pending: "tentative"
 };
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
@@ -117,11 +125,11 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { ok: false, error: "Invalid JSON payload" });
   }
 
-  const action = payload.action === "delete" ? "delete" : "upsert";
+  const action = payload.action === "delete" ? "delete" : payload.action === "respond" ? "respond" : "upsert";
   const calendarId = Deno.env.get("CALENDAR_ID") || "primary";
   const sendUpdates = payload.sendUpdates === "none" || payload.sendUpdates === "externalOnly"
     ? payload.sendUpdates
-    : "all";
+    : action === "respond" ? "none" : "all";
   const eventId = String(payload.eventId || "").trim();
 
   const encodedCalendarId = encodeURIComponent(calendarId);
@@ -153,6 +161,51 @@ Deno.serve(async (req) => {
       return jsonResponse(502, { ok: false, error: "Calendar API error (delete)", detail: errorText });
     }
     return jsonResponse(200, { ok: true, deleted: true });
+  }
+
+  // --- 出欠回答の反映（ポータル→カレンダー） ---
+  if (action === "respond") {
+    if (!eventId) {
+      return jsonResponse(400, { ok: false, error: "eventId is required for respond" });
+    }
+    const attendeeEmail = String(payload.attendeeEmail || "").trim().toLowerCase();
+    const googleStatus = RESPONSE_STATUS_BY_PORTAL_STATUS[String(payload.status || "")];
+    if (!EMAIL_PATTERN.test(attendeeEmail) || !googleStatus) {
+      return jsonResponse(400, { ok: false, error: "attendeeEmail and a valid status are required" });
+    }
+
+    const getUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodeURIComponent(eventId)}`;
+    const getResponse = await fetch(getUrl, {
+      headers: { "Authorization": `Bearer ${accessToken}` }
+    });
+    if (!getResponse.ok) {
+      const errorText = await getResponse.text();
+      return jsonResponse(502, { ok: false, error: "Calendar API error (get)", detail: errorText });
+    }
+
+    const eventData = await getResponse.json() as { attendees?: { email?: string; responseStatus?: string }[] };
+    const attendees = Array.isArray(eventData.attendees) ? eventData.attendees : [];
+    const target = attendees.find((a) => String(a.email || "").trim().toLowerCase() === attendeeEmail);
+    if (!target) {
+      return jsonResponse(404, { ok: false, error: "attendee not found on this event" });
+    }
+    target.responseStatus = googleStatus;
+
+    const patchUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates}`;
+    const patchResponse = await fetch(patchUrl, {
+      method: "PATCH",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ attendees })
+    });
+    if (!patchResponse.ok) {
+      const errorText = await patchResponse.text();
+      return jsonResponse(502, { ok: false, error: "Calendar API error (respond)", detail: errorText });
+    }
+
+    return jsonResponse(200, { ok: true, eventId, responseStatus: googleStatus });
   }
 
   // --- 作成 / 更新 ---

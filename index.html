@@ -1249,7 +1249,7 @@
                 return;
             }
 
-            const baseSelect = "no,notice_date,start_time,end_time,title,content,contact_phone,contact_email,remarks,visibility,attendance_required,attendance_deadline,lifecycle_status,version_no,canceled_at";
+            const baseSelect = "no,notice_date,start_time,end_time,title,content,contact_phone,contact_email,remarks,visibility,attendance_required,attendance_deadline,lifecycle_status,version_no,canceled_at,google_calendar_event_id";
             const { data, error } = await client
                 .from("announcements")
                 .select(baseSelect)
@@ -1342,6 +1342,22 @@
                 if (upsertError) {
                     setAnnouncementTileMessage("出欠回答の保存に失敗しました。", true);
                     return;
+                }
+
+                const targetItem = allAnnouncementRows.find((r) => Number(r.no) === Number(announcementNo));
+                if (targetItem && targetItem.google_calendar_event_id) {
+                    try {
+                        await client.functions.invoke("announcement-calendar-sync", {
+                            body: {
+                                action: "respond",
+                                eventId: targetItem.google_calendar_event_id,
+                                attendeeEmail: normalizedUserEmail,
+                                status
+                            }
+                        });
+                    } catch (calEx) {
+                        console.warn("カレンダーへの出欠反映に失敗:", calEx);
+                    }
                 }
 
                 setAnnouncementTileMessage(`出欠回答を保存しました（${attendanceStatusLabel(status)}）。`);

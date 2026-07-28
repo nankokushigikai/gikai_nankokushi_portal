@@ -2052,6 +2052,22 @@
                         return;
                     }
 
+                    const targetItem = visibleRows.find((r) => Number(r.no) === announcementNo);
+                    if (targetItem && targetItem.google_calendar_event_id) {
+                        try {
+                            await dbClient.functions.invoke("announcement-calendar-sync", {
+                                body: {
+                                    action: "respond",
+                                    eventId: targetItem.google_calendar_event_id,
+                                    attendeeEmail: currentUserEmail,
+                                    status
+                                }
+                            });
+                        } catch (calEx) {
+                            console.warn("カレンダーへの出欠反映に失敗:", calEx);
+                        }
+                    }
+
                     message.textContent = `出欠回答を保存しました（${attendanceStatusLabel(status)}）。`;
                     await loadAnnouncements();
                 });
