@@ -48,7 +48,7 @@
                 </div>
             </div>
 
-            <form id="announcement-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form id="announcement-form" novalidate class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="text-sm font-semibold text-gray-700">タイトル<span class="text-rose-600 font-bold">＊</span></label>
                     <div class="mt-1 flex gap-2">
@@ -227,6 +227,12 @@
         let currentUserEmail = "";
         let allMembers = [];
         let allTitleMasters = [];
+
+            function setAnnouncementMessage(text, isError = false) {
+                const el = document.getElementById("announcement-message");
+                el.textContent = text;
+                el.className = `mt-3 text-sm ${isError ? "text-rose-700 font-semibold" : "text-gray-600"}`;
+            }
 
             function escapeHtml(value) {
                 return String(value || "")
@@ -665,7 +671,7 @@
             const eh = document.getElementById("end_time_h").value;
             const em = document.getElementById("end_time_m").value;
             if (!sh || !sm || !eh || !em) {
-                document.getElementById("announcement-message").textContent = "開始・終了時間を選択してください。";
+                setAnnouncementMessage("開始・終了時間を選択してください。", true);
                 return;
             }
             document.getElementById("start_time").value = `${sh}:${sm}`;
@@ -677,7 +683,7 @@
             if (visibility === "specific") {
                 const checkboxes = document.querySelectorAll(".member-checkbox:checked");
                 if (checkboxes.length === 0) {
-                    document.getElementById("announcement-message").textContent = "配信対象メンバーを選択してください。";
+                    setAnnouncementMessage("配信対象メンバーを選択してください。", true);
                     return;
                 }
                 selectedMembers = Array.from(checkboxes).map(cb => cb.value);
@@ -699,13 +705,19 @@
                 updated_at: new Date().toISOString()
             };
 
-            if (!payload.notice_date || !payload.start_time || !payload.end_time || !payload.title || !payload.content) {
-                document.getElementById("announcement-message").textContent = "必須項目を入力してください。";
+            const missingFields = [];
+            if (!payload.title) missingFields.push("タイトル");
+            if (!payload.notice_date) missingFields.push("日付");
+            if (!payload.start_time) missingFields.push("開始時間");
+            if (!payload.end_time) missingFields.push("終了時間");
+            if (!payload.content) missingFields.push("内容");
+            if (missingFields.length > 0) {
+                setAnnouncementMessage(`以下の必須項目を入力してください: ${missingFields.join("、")}`, true);
                 return;
             }
 
             if (payload.start_time > payload.end_time) {
-                document.getElementById("announcement-message").textContent = "時間の入力を確認してください（開始時間 <= 終了時間）。";
+                setAnnouncementMessage("時間の入力を確認してください（開始時間 <= 終了時間）。", true);
                 return;
             }
 
@@ -718,7 +730,7 @@
                 payload.attendance_required = false;
             } else {
                 if (!dd || !dh || !dm) {
-                    document.getElementById("announcement-message").textContent = "回答期限を設定するか、「回答期限を設定しない」を選択してください。";
+                    setAnnouncementMessage("回答期限を設定するか、「回答期限を設定しない」を選択してください。", true);
                     return;
                 }
                 payload.attendance_deadline = new Date(`${dd}T${dh}:${dm}:00+09:00`).toISOString();
@@ -731,7 +743,7 @@
                 .select();
 
             if (error) {
-                document.getElementById("announcement-message").textContent = "登録失敗: " + error.message;
+                setAnnouncementMessage("登録失敗: " + error.message, true);
                 return;
             }
 
@@ -753,9 +765,12 @@
                     .insert(recipients);
 
                 if (recipientError) {
-                        document.getElementById("announcement-message").textContent = isAnnouncementRecipientsTableMissing(recipientError)
+                    setAnnouncementMessage(
+                        isAnnouncementRecipientsTableMissing(recipientError)
                             ? buildAnnouncementRecipientsMissingMessage()
-                            : "配信対象の保存に失敗しました: " + recipientError.message;
+                            : "配信対象の保存に失敗しました: " + recipientError.message,
+                        true
+                    );
                     return;
                 }
             }
@@ -846,8 +861,7 @@
                         const detail = await extractFunctionErrorDetail(mailError);
                         const friendly = buildFriendlyMailError(detail);
                         console.warn("メール送信エラー:", detail || mailError.message);
-                        document.getElementById("announcement-message").textContent =
-                            `登録しました（${friendly}）。`;
+                        setAnnouncementMessage(`登録しました（${friendly}）。`);
                         clearForm();
                         return;
                     }
@@ -855,14 +869,13 @@
                     console.warn("メール送信例外:", mailEx);
                     const detail = String(mailEx && mailEx.message ? mailEx.message : mailEx);
                     const friendly = buildFriendlyMailError(detail);
-                    document.getElementById("announcement-message").textContent =
-                        `登録しました（${friendly}）。`;
+                    setAnnouncementMessage(`登録しました（${friendly}）。`);
                     clearForm();
                     return;
                 }
             }
 
-            document.getElementById("announcement-message").textContent = `登録しました。${calendarNote}`;
+            setAnnouncementMessage(`登録しました。${calendarNote}`);
             clearForm();
         }
 
