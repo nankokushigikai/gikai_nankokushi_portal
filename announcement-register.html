@@ -875,6 +875,10 @@
             const m = document.getElementById("end_time_m");
             if (!m.value) m.value = "00";
         });
+        document.getElementById("attendance_deadline_h").addEventListener("change", () => {
+            const m = document.getElementById("attendance_deadline_m");
+            if (!m.value) m.value = "00";
+        });
 
         // 回答期限を設定しない場合の入力欄無効化
         document.getElementById("no_deadline").addEventListener("change", applyNoDeadlineState);
