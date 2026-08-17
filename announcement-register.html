@@ -35,7 +35,8 @@
 
         <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-rose-500">
             <h1 class="text-2xl font-bold mb-2 text-gray-700">お知らせ登録</h1>
-            <p class="text-sm text-gray-600 mb-5">このページは全員が開けます。登録者名はログイン中の利用者名で自動保存されます。</p>
+            <p class="text-sm text-gray-600 mb-1">このページは全員が開けます。登録者名はログイン中の利用者名で自動保存されます。</p>
+            <p class="text-xs text-rose-600 mb-5"><span class="font-bold">＊</span>は必須項目です</p>
 
             <!-- 日程調整からの引き継ぎバナー -->
             <div id="schedule-prefill-banner" class="hidden mb-5 bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
@@ -49,27 +50,27 @@
 
             <form id="announcement-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="text-sm font-semibold text-gray-700">タイトル</label>
+                    <label class="text-sm font-semibold text-gray-700">タイトル<span class="text-rose-600 font-bold">＊</span></label>
                     <div class="mt-1 flex gap-2">
-                        <input id="notice_title" list="title-master-datalist" required class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
+                        <input id="notice_title" list="title-master-datalist" required class="flex-1 border border-rose-200 bg-rose-50 rounded-lg px-3 py-2 text-sm" placeholder="例: 6月定例会資料の更新">
                         <datalist id="title-master-datalist"></datalist>
                         <button type="button" id="title-master-save-btn" class="flex-shrink-0 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">＋保存</button>
                         <button type="button" id="title-master-manage-btn" class="flex-shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap">⚙ 管理</button>
                     </div>
                 </div>
                 <div>
-                    <label class="text-sm font-semibold text-gray-700">日付</label>
-                    <input id="notice_date" type="date" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <label class="text-sm font-semibold text-gray-700">日付<span class="text-rose-600 font-bold">＊</span></label>
+                    <input id="notice_date" type="date" required class="mt-1 w-full border border-rose-200 bg-rose-50 rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div>
-                    <label class="text-sm font-semibold text-gray-700">開始時間</label>
+                    <label class="text-sm font-semibold text-gray-700">開始時間<span class="text-rose-600 font-bold">＊</span></label>
                     <div class="mt-1 flex items-center gap-1">
-                        <select id="start_time_h" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                        <select id="start_time_h" required class="border border-rose-200 bg-rose-50 rounded-lg px-2 py-2 text-sm">
                             <option value="">--</option>
                             <script>for(let h=0;h<24;h++)document.write(`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`);</script>
                         </select>
                         <span class="text-sm">時</span>
-                        <select id="start_time_m" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                        <select id="start_time_m" required class="border border-rose-200 bg-rose-50 rounded-lg px-2 py-2 text-sm">
                             <option value="">--</option>
                             <option value="00">00</option>
                             <option value="15">15</option>
@@ -81,14 +82,14 @@
                     <input type="hidden" id="start_time">
                 </div>
                 <div>
-                    <label class="text-sm font-semibold text-gray-700">終了時間</label>
+                    <label class="text-sm font-semibold text-gray-700">終了時間<span class="text-rose-600 font-bold">＊</span></label>
                     <div class="mt-1 flex items-center gap-1">
-                        <select id="end_time_h" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                        <select id="end_time_h" required class="border border-rose-200 bg-rose-50 rounded-lg px-2 py-2 text-sm">
                             <option value="">--</option>
                             <script>for(let h=0;h<24;h++)document.write(`<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`);</script>
                         </select>
                         <span class="text-sm">時</span>
-                        <select id="end_time_m" required class="border border-gray-300 rounded-lg px-2 py-2 text-sm">
+                        <select id="end_time_m" required class="border border-rose-200 bg-rose-50 rounded-lg px-2 py-2 text-sm">
                             <option value="">--</option>
                             <option value="00">00</option>
                             <option value="15">15</option>
@@ -100,8 +101,8 @@
                     <input type="hidden" id="end_time">
                 </div>
                 <div class="md:col-span-2">
-                    <label class="text-sm font-semibold text-gray-700">内容</label>
-                    <textarea id="notice_content" rows="3" required class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="お知らせ本文を入力"></textarea>
+                    <label class="text-sm font-semibold text-gray-700">内容<span class="text-rose-600 font-bold">＊</span></label>
+                    <textarea id="notice_content" rows="3" required class="mt-1 w-full border border-rose-200 bg-rose-50 rounded-lg px-3 py-2 text-sm" placeholder="お知らせ本文を入力"></textarea>
                 </div>
                 <div>
                     <label class="text-sm font-semibold text-gray-700">登録者</label>
