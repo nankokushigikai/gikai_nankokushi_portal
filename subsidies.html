@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>補助金・助成金検索 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">補助金・助成金検索</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6">
+            <a href="index.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>ポータルトップに戻る
+            </a>
+        </div>
+
+        <section class="rounded-2xl p-6 md:p-8 bg-gradient-to-r from-amber-500 to-indigo-700 text-white shadow-lg mb-8">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-2">補助金・助成金検索</h1>
+                    <p class="text-amber-100">南国市の各事業の補助金・助成金をキーワードや対象・分野で検索できます。</p>
+                </div>
+                <a id="admin-link" href="subsidies-settings.html" class="hidden bg-white text-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-100 whitespace-nowrap">
+                    <i class="fas fa-gear mr-1"></i>管理画面へ
+                </a>
+            </div>
+        </section>
+
+        <!-- 検索・フィルター -->
+        <section class="bg-white rounded-xl shadow-sm p-6 border-t-4 border-amber-500 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="md:col-span-1">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">キーワード</label>
+                    <input id="keyword-input" type="search" placeholder="制度名・概要で検索" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">対象</label>
+                    <select id="audience-select" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="all">すべて</option>
+                        <option value="business">事業者向け</option>
+                        <option value="resident">住民向け</option>
+                        <option value="both">両方対象</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">受付状況</label>
+                    <select id="status-select" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                        <option value="all">すべて</option>
+                        <option value="募集中">募集中</option>
+                        <option value="通年">通年</option>
+                        <option value="受付終了">受付終了</option>
+                        <option value="未定">未定</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">分野で絞り込み</label>
+                <div id="tag-filter-list" class="flex flex-wrap gap-2 text-sm text-gray-400">読み込み中...</div>
+            </div>
+        </section>
+
+        <div class="flex items-center justify-between mb-4">
+            <p id="result-count" class="text-sm text-gray-600">読み込み中です...</p>
+            <button id="clear-filter-btn" type="button" class="text-sm font-semibold text-indigo-700 hover:text-indigo-900">条件をクリア</button>
+        </div>
+
+        <div id="subsidy-list" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <p class="text-gray-400 text-sm">読み込み中です...</p>
+        </div>
+    </main>
+
+    <footer class="mt-12 py-6 text-center text-gray-400 text-xs">
+        &copy; 2026 南国市議会DX推進プロジェクト - 未来の自治体をつくる
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        const state = {
+            client: null,
+            role: "viewer",
+            subsidies: [],
+            selectedTags: new Set(),
+            keyword: ""
+        };
+
+        const AUDIENCE_LABEL = { business: "事業者向け", resident: "住民向け", both: "事業者・住民 両方" };
+        const AUDIENCE_BADGE_CLASS = {
+            business: "bg-sky-100 text-sky-700",
+            resident: "bg-emerald-100 text-emerald-700",
+            both: "bg-amber-100 text-amber-700"
+        };
+        const STATUS_BADGE_CLASS = {
+            "募集中": "bg-emerald-100 text-emerald-700",
+            "通年": "bg-sky-100 text-sky-700",
+            "受付終了": "bg-gray-200 text-gray-600",
+            "未定": "bg-amber-100 text-amber-700"
+        };
+
+        const keywordInput = document.getElementById("keyword-input");
+        const audienceSelect = document.getElementById("audience-select");
+        const statusSelect = document.getElementById("status-select");
+        const tagFilterList = document.getElementById("tag-filter-list");
+        const resultCount = document.getElementById("result-count");
+        const clearFilterBtn = document.getElementById("clear-filter-btn");
+        const subsidyList = document.getElementById("subsidy-list");
+
+        function el(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined && text !== null) node.textContent = text;
+            return node;
+        }
+
+        function isSafeHttpUrl(value) {
+            const trimmed = String(value || "").trim();
+            return /^https?:\/\//i.test(trimmed) ? trimmed : "";
+        }
+
+        function collectAllTags() {
+            const tagSet = new Set();
+            state.subsidies.forEach((row) => {
+                (row.tags || []).forEach((tag) => {
+                    const t = String(tag || "").trim();
+                    if (t) tagSet.add(t);
+                });
+            });
+            return Array.from(tagSet).sort((a, b) => a.localeCompare(b, "ja"));
+        }
+
+        function renderTagFilterList() {
+            const tags = collectAllTags();
+            tagFilterList.innerHTML = "";
+            if (tags.length === 0) {
+                tagFilterList.appendChild(el("span", "text-gray-400", "分野タグが登録されているデータはまだありません。"));
+                return;
+            }
+            tags.forEach((tag) => {
+                const isActive = state.selectedTags.has(tag);
+                const btn = el("button", null, tag);
+                btn.type = "button";
+                btn.className = `px-3 py-1 rounded-full text-xs font-semibold border transition ${isActive ? "bg-amber-500 text-white border-amber-500" : "bg-white text-gray-600 border-gray-300 hover:border-amber-400"}`;
+                btn.addEventListener("click", () => {
+                    if (state.selectedTags.has(tag)) {
+                        state.selectedTags.delete(tag);
+                    } else {
+                        state.selectedTags.add(tag);
+                    }
+                    renderTagFilterList();
+                    renderList();
+                });
+                tagFilterList.appendChild(btn);
+            });
+        }
+
+        function getFilteredSubsidies() {
+            const keyword = state.keyword.trim().toLowerCase();
+            const audience = audienceSelect.value;
+            const status = statusSelect.value;
+
+            return state.subsidies.filter((row) => {
+                if (keyword) {
+                    const haystack = `${row.name || ""} ${row.summary || ""}`.toLowerCase();
+                    if (!haystack.includes(keyword)) return false;
+                }
+                if (audience !== "all" && row.audience !== audience && row.audience !== "both") return false;
+                if (status !== "all" && row.application_status !== status) return false;
+                if (state.selectedTags.size > 0) {
+                    const rowTags = new Set(row.tags || []);
+                    let matched = false;
+                    state.selectedTags.forEach((tag) => { if (rowTags.has(tag)) matched = true; });
+                    if (!matched) return false;
+                }
+                return true;
+            }).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ja"));
+        }
+
+        function buildCard(row) {
+            const card = el("div", "bg-white rounded-xl shadow-sm border-t-4 border-amber-500 p-5 flex flex-col gap-2");
+
+            if (row.is_published === false) {
+                card.appendChild(el("span", "self-start inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-800 text-white", "下書き（管理者のみ表示）"));
+            }
+
+            const badgeRow = el("div", "flex flex-wrap gap-2");
+            badgeRow.appendChild(el("span", `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${AUDIENCE_BADGE_CLASS[row.audience] || "bg-gray-100 text-gray-600"}`, AUDIENCE_LABEL[row.audience] || row.audience));
+            badgeRow.appendChild(el("span", `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE_CLASS[row.application_status] || "bg-gray-100 text-gray-600"}`, row.application_status || ""));
+            card.appendChild(badgeRow);
+
+            card.appendChild(el("h3", "text-lg font-bold text-gray-800", row.name || "(名称未設定)"));
+
+            if (row.summary) {
+                card.appendChild(el("p", "text-sm text-gray-600 whitespace-pre-wrap", row.summary));
+            }
+
+            const detailGrid = el("div", "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 mt-1");
+            const addDetail = (label, value) => {
+                if (!value) return;
+                const wrap = el("div");
+                wrap.appendChild(el("span", "text-gray-400", `${label}: `));
+                wrap.appendChild(el("span", "text-gray-700 font-semibold", value));
+                detailGrid.appendChild(wrap);
+            };
+            addDetail("補助率・上限額", row.subsidy_amount);
+            addDetail("受付期間", row.application_period);
+            addDetail("担当課", row.contact_dept);
+            addDetail("問い合わせ先", row.contact_info);
+            addDetail("最終確認日", row.last_confirmed_on);
+            card.appendChild(detailGrid);
+
+            if (row.tags && row.tags.length > 0) {
+                const tagRow = el("div", "flex flex-wrap gap-1 mt-1");
+                row.tags.forEach((tag) => {
+                    tagRow.appendChild(el("span", "px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700", tag));
+                });
+                card.appendChild(tagRow);
+            }
+
+            if (row.notes) {
+                const notes = el("p", "text-xs text-gray-500 whitespace-pre-wrap mt-1");
+                notes.appendChild(el("span", "font-semibold text-gray-600", "備考: "));
+                notes.appendChild(document.createTextNode(row.notes));
+                card.appendChild(notes);
+            }
+
+            const safeUrl = isSafeHttpUrl(row.reference_url);
+            if (safeUrl) {
+                const link = document.createElement("a");
+                link.href = safeUrl;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.className = "mt-2 inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 hover:text-indigo-900";
+                link.textContent = "参考ページを開く";
+                const icon = el("i", "fas fa-arrow-up-right-from-square text-xs");
+                link.appendChild(icon);
+                card.appendChild(link);
+            }
+
+            return card;
+        }
+
+        function renderList() {
+            const rows = getFilteredSubsidies();
+            resultCount.textContent = `${rows.length} 件の補助金・助成金が見つかりました（登録 ${state.subsidies.length} 件中）`;
+
+            subsidyList.innerHTML = "";
+            if (rows.length === 0) {
+                subsidyList.appendChild(el("p", "text-gray-400 text-sm", "条件に一致する補助金・助成金は見つかりませんでした。"));
+                return;
+            }
+            rows.forEach((row) => subsidyList.appendChild(buildCard(row)));
+        }
+
+        async function loadSubsidies() {
+            const { data, error } = await state.client
+                .from("subsidies")
+                .select("*");
+
+            if (error) {
+                subsidyList.innerHTML = "";
+                subsidyList.appendChild(el("p", "text-rose-600 text-sm", `読み込みエラー: ${error.message}`));
+                resultCount.textContent = "";
+                return;
+            }
+
+            state.subsidies = data || [];
+            renderTagFilterList();
+            renderList();
+        }
+
+        keywordInput.addEventListener("input", () => {
+            state.keyword = keywordInput.value;
+            renderList();
+        });
+        audienceSelect.addEventListener("change", renderList);
+        statusSelect.addEventListener("change", renderList);
+        clearFilterBtn.addEventListener("click", () => {
+            keywordInput.value = "";
+            state.keyword = "";
+            audienceSelect.value = "all";
+            statusSelect.value = "all";
+            state.selectedTags.clear();
+            renderTagFilterList();
+            renderList();
+        });
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "viewer",
+            authTargetId: "authArea",
+            returnTo: "subsidies.html",
+            onReady: async ({ client, role }) => {
+                state.client = client;
+                state.role = role;
+                if (role === "admin") {
+                    document.getElementById("admin-link").classList.remove("hidden");
+                }
+                await loadSubsidies();
+            }
+        });
+    </script>
+</body>
+</html>

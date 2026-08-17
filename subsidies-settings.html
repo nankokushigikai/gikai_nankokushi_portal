@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>補助金・助成金 管理 | 南国市議会DXポータル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="bg-slate-50 text-gray-800">
+
+    <header class="bg-indigo-700 text-white shadow-lg p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="index.html" class="text-lg font-bold font-sans tracking-wider hover:text-gray-200">
+                <i class="fas fa-laptop-code mr-2"></i>南国市議会DXポータル
+            </a>
+            <div class="text-right">
+                <span class="text-sm">補助金・助成金 管理</span>
+                <div id="authArea"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div class="mb-6 flex items-center justify-between">
+            <a href="subsidies.html" class="text-indigo-700 hover:text-indigo-900 text-sm font-semibold">
+                <i class="fas fa-chevron-left mr-1"></i>検索画面に戻る
+            </a>
+        </div>
+
+        <div id="form-message" class="hidden mb-4 rounded-xl px-4 py-3 text-sm"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 登録・編集フォーム -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 sticky top-6">
+                    <h2 id="form-title" class="text-lg font-bold text-slate-900 mb-4">新規登録</h2>
+                    <form id="subsidy-form" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">制度名 <span class="text-rose-600">*</span></label>
+                            <input id="f-name" type="text" required class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">対象</label>
+                            <select id="f-audience" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                <option value="business">事業者向け</option>
+                                <option value="resident">住民向け</option>
+                                <option value="both" selected>事業者・住民 両方</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">受付状況</label>
+                            <select id="f-status" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                <option value="募集中" selected>募集中</option>
+                                <option value="通年">通年</option>
+                                <option value="受付終了">受付終了</option>
+                                <option value="未定">未定</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">分野タグ</label>
+                            <input id="f-tags" type="text" placeholder="例: 創業, 設備投資, 子育て" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                            <p class="text-xs text-slate-500 mt-1">カンマ区切りで自由に入力できます。</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">概要・対象要件</label>
+                            <textarea id="f-summary" rows="3" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">補助率・上限額</label>
+                            <input id="f-amount" type="text" placeholder="例: 補助率1/2、上限20万円" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">受付期間</label>
+                            <input id="f-period" type="text" placeholder="例: 令和8年4月1日〜令和9年3月31日" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">担当課</label>
+                                <input id="f-dept" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-700 mb-1">問い合わせ先</label>
+                                <input id="f-contact" type="text" placeholder="電話番号など" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">参考URL</label>
+                            <input id="f-url" type="url" placeholder="https://www.city.nankoku.lg.jp/..." class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">最終確認日</label>
+                            <input id="f-confirmed" type="date" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-1">備考</label>
+                            <textarea id="f-notes" rows="2" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"></textarea>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input id="f-published" type="checkbox" class="w-4 h-4">
+                            <label for="f-published" class="text-sm font-semibold text-slate-700">公開する（オフの場合は下書きとして保存し、検索画面には管理者にのみ表示されます）</label>
+                        </div>
+
+                        <div class="flex gap-2 pt-2">
+                            <button type="submit" class="flex-1 px-4 py-2.5 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 transition">保存</button>
+                            <button type="button" id="cancel-edit-btn" class="flex-1 px-4 py-2.5 rounded-lg bg-slate-200 text-slate-700 font-semibold hover:bg-slate-300 hidden">キャンセル</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 一覧 -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-2xl border border-slate-200 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-bold text-slate-900">登録済み一覧</h2>
+                        <input id="admin-search-input" type="search" placeholder="制度名で絞り込み" class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm">
+                    </div>
+                    <div id="subsidy-admin-list" class="space-y-3">
+                        <p class="text-slate-400 text-sm">読み込み中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
+    <script src="auth-config.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        const state = {
+            client: null,
+            rows: [],
+            editingId: null,
+            searchTerm: ""
+        };
+
+        const form = document.getElementById("subsidy-form");
+        const formTitle = document.getElementById("form-title");
+        const formMessage = document.getElementById("form-message");
+        const cancelEditBtn = document.getElementById("cancel-edit-btn");
+        const adminList = document.getElementById("subsidy-admin-list");
+        const searchInput = document.getElementById("admin-search-input");
+
+        const fields = {
+            name: document.getElementById("f-name"),
+            audience: document.getElementById("f-audience"),
+            status: document.getElementById("f-status"),
+            tags: document.getElementById("f-tags"),
+            summary: document.getElementById("f-summary"),
+            amount: document.getElementById("f-amount"),
+            period: document.getElementById("f-period"),
+            dept: document.getElementById("f-dept"),
+            contact: document.getElementById("f-contact"),
+            url: document.getElementById("f-url"),
+            confirmed: document.getElementById("f-confirmed"),
+            notes: document.getElementById("f-notes"),
+            published: document.getElementById("f-published")
+        };
+
+        function el(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined && text !== null) node.textContent = text;
+            return node;
+        }
+
+        function showMessage(text, isError = false) {
+            formMessage.textContent = text;
+            formMessage.className = isError
+                ? "mb-4 rounded-xl px-4 py-3 text-sm bg-rose-50 text-rose-700 border border-rose-200"
+                : "mb-4 rounded-xl px-4 py-3 text-sm bg-emerald-50 text-emerald-700 border border-emerald-200";
+            formMessage.classList.remove("hidden");
+        }
+
+        function clearMessage() {
+            formMessage.classList.add("hidden");
+        }
+
+        function parseTagsInput(value) {
+            return String(value || "")
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean);
+        }
+
+        function resetForm() {
+            state.editingId = null;
+            form.reset();
+            fields.audience.value = "both";
+            fields.status.value = "募集中";
+            cancelEditBtn.classList.add("hidden");
+            formTitle.textContent = "新規登録";
+            clearMessage();
+        }
+
+        function fillForm(row) {
+            state.editingId = row.id;
+            fields.name.value = row.name || "";
+            fields.audience.value = row.audience || "both";
+            fields.status.value = row.application_status || "募集中";
+            fields.tags.value = (row.tags || []).join(", ");
+            fields.summary.value = row.summary || "";
+            fields.amount.value = row.subsidy_amount || "";
+            fields.period.value = row.application_period || "";
+            fields.dept.value = row.contact_dept || "";
+            fields.contact.value = row.contact_info || "";
+            fields.url.value = row.reference_url || "";
+            fields.confirmed.value = row.last_confirmed_on || "";
+            fields.notes.value = row.notes || "";
+            fields.published.checked = !!row.is_published;
+            cancelEditBtn.classList.remove("hidden");
+            formTitle.textContent = `編集: ${row.name || ""}`;
+            clearMessage();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const name = fields.name.value.trim();
+            if (!name) {
+                showMessage("制度名を入力してください。", true);
+                return;
+            }
+
+            const payload = {
+                name,
+                audience: fields.audience.value,
+                application_status: fields.status.value,
+                tags: parseTagsInput(fields.tags.value),
+                summary: fields.summary.value.trim() || null,
+                subsidy_amount: fields.amount.value.trim() || null,
+                application_period: fields.period.value.trim() || null,
+                contact_dept: fields.dept.value.trim() || null,
+                contact_info: fields.contact.value.trim() || null,
+                reference_url: fields.url.value.trim() || null,
+                last_confirmed_on: fields.confirmed.value || null,
+                notes: fields.notes.value.trim() || null,
+                is_published: fields.published.checked,
+                updated_by_email: state.actorEmail || null,
+                updated_at: new Date().toISOString()
+            };
+
+            let result;
+            if (state.editingId) {
+                result = await state.client
+                    .from("subsidies")
+                    .update(payload)
+                    .eq("id", state.editingId)
+                    .select();
+            } else {
+                payload.created_by_email = state.actorEmail || null;
+                result = await state.client
+                    .from("subsidies")
+                    .insert(payload)
+                    .select();
+            }
+
+            if (result.error) {
+                showMessage(`保存に失敗しました: ${result.error.message}`, true);
+                return;
+            }
+
+            showMessage(state.editingId ? "更新しました。" : "登録しました。");
+            resetForm();
+            await loadData();
+        });
+
+        cancelEditBtn.addEventListener("click", resetForm);
+
+        async function togglePublish(row) {
+            const result = await state.client
+                .from("subsidies")
+                .update({ is_published: !row.is_published, updated_at: new Date().toISOString() })
+                .eq("id", row.id)
+                .select();
+
+            if (result.error) {
+                showMessage(`更新に失敗しました: ${result.error.message}`, true);
+                return;
+            }
+            await loadData();
+        }
+
+        async function deleteRow(row) {
+            if (!confirm(`「${row.name}」を削除しますか？この操作は元に戻せません。`)) return;
+
+            const result = await state.client
+                .from("subsidies")
+                .delete()
+                .eq("id", row.id);
+
+            if (result.error) {
+                showMessage(`削除に失敗しました: ${result.error.message}`, true);
+                return;
+            }
+            showMessage("削除しました。");
+            await loadData();
+        }
+
+        function buildListItem(row) {
+            const card = el("div", "border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition");
+
+            const topRow = el("div", "flex items-start justify-between gap-3 mb-2");
+            const titleWrap = el("div", "flex-1 min-w-0");
+            titleWrap.appendChild(el("h3", "font-semibold text-slate-900", row.name || "(名称未設定)"));
+            if (row.summary) {
+                titleWrap.appendChild(el("p", "text-sm text-slate-600 mt-1 line-clamp-2", row.summary));
+            }
+            topRow.appendChild(titleWrap);
+            topRow.appendChild(el("span", `px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${row.is_published ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-700"}`, row.is_published ? "公開中" : "下書き"));
+            card.appendChild(topRow);
+
+            const metaRow = el("div", "text-xs text-slate-500 mb-3");
+            metaRow.textContent = `対象: ${{ business: "事業者向け", resident: "住民向け", both: "両方" }[row.audience] || row.audience} / 状況: ${row.application_status || ""}`;
+            card.appendChild(metaRow);
+
+            const btnRow = el("div", "flex flex-wrap gap-2");
+
+            const editBtn = el("button", "px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-sm font-semibold hover:bg-amber-100", "編集");
+            editBtn.type = "button";
+            editBtn.addEventListener("click", () => fillForm(row));
+            btnRow.appendChild(editBtn);
+
+            const publishBtn = el("button", "px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 text-sm font-semibold hover:bg-sky-100", row.is_published ? "非公開にする" : "公開する");
+            publishBtn.type = "button";
+            publishBtn.addEventListener("click", () => togglePublish(row));
+            btnRow.appendChild(publishBtn);
+
+            const deleteBtn = el("button", "px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-sm font-semibold hover:bg-rose-100", "削除");
+            deleteBtn.type = "button";
+            deleteBtn.addEventListener("click", () => deleteRow(row));
+            btnRow.appendChild(deleteBtn);
+
+            card.appendChild(btnRow);
+            return card;
+        }
+
+        function renderList() {
+            const keyword = state.searchTerm.trim().toLowerCase();
+            const rows = state.rows
+                .filter((row) => !keyword || String(row.name || "").toLowerCase().includes(keyword))
+                .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ja"));
+
+            adminList.innerHTML = "";
+            if (rows.length === 0) {
+                adminList.appendChild(el("p", "text-slate-400 text-sm", "登録されている補助金・助成金はありません。"));
+                return;
+            }
+            rows.forEach((row) => adminList.appendChild(buildListItem(row)));
+        }
+
+        searchInput.addEventListener("input", () => {
+            state.searchTerm = searchInput.value;
+            renderList();
+        });
+
+        async function loadData() {
+            const { data, error } = await state.client
+                .from("subsidies")
+                .select("*")
+                .order("updated_at", { ascending: false });
+
+            if (error) {
+                adminList.innerHTML = "";
+                adminList.appendChild(el("p", "text-rose-600 text-sm", `読み込みエラー: ${error.message}`));
+                return;
+            }
+            state.rows = data || [];
+            renderList();
+        }
+
+        portalAuth.init({
+            requireAuth: true,
+            minRole: "admin",
+            authTargetId: "authArea",
+            returnTo: "subsidies-settings.html",
+            onReady: async ({ client, session }) => {
+                state.client = client;
+                state.actorEmail = (session && session.user && session.user.email) || "";
+                resetForm();
+                await loadData();
+            }
+        });
+    </script>
+</body>
+</html>
