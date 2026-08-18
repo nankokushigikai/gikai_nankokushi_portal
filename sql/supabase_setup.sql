@@ -1,0 +1,1605 @@
+-- Supabase Storage バケット設定
+-- ⚠️ 以下は手動でSupabaseダッシュボード上で実施してください:
+-- 
+-- 1. Storage > Buckets で「gian」という名前でバケットを作成
+-- 2. Buckets > gian > Policies で以下のポリシーを追加:
+--    - "Public Access" (anonロール向け)
+--      SELECT: (bucketName = 'gian'::text) = true
+--
+-- 3. バケット設定で "Make bucket public" を有効化
+-- 
+-- これにより、アップロードされたファイルが公開URLでアクセス可能になります。
+
+-- Storage objects ポリシー（gian バケット）
+-- 公開閲覧はバケット側の public 設定を利用しつつ、
+-- アップロードは認証ユーザーのみ許可する。
+drop policy if exists gian_objects_select_public on storage.objects;
+create policy gian_objects_select_public on storage.objects
+for select using (bucket_id = 'gian');
+
+drop policy if exists gian_objects_insert_authenticated on storage.objects;
+create policy gian_objects_insert_authenticated on storage.objects
+for insert to authenticated
+with check (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+);
+
+drop policy if exists gian_objects_update_owner_or_admin on storage.objects;
+create policy gian_objects_update_owner_or_admin on storage.objects
+for update to authenticated
+using (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+    and (
+        owner = auth.uid()
+        or public.is_portal_admin()
+    )
+)
+with check (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+    and (
+        owner = auth.uid()
+        or public.is_portal_admin()
+    )
+);
+
+drop policy if exists gian_objects_delete_owner_or_admin on storage.objects;
+create policy gian_objects_delete_owner_or_admin on storage.objects
+for delete to authenticated
+using (
+    bucket_id = 'gian'
+    and auth.uid() is not null
+    and (
+        owner = auth.uid()
+        or public.is_portal_admin()
+    )
+);
+
+create table if not exists public.profiles (
+    user_id uuid primary key,
+    email text not null unique,
+    display_name text,
+    role text not null default 'viewer' check (role in ('viewer','editor','admin')),
+    created_at timestamptz not null default now()
+);
+
+-- 操作監査ログ
+create table if not exists public.audit_log (
+    id bigserial primary key,
+    actor_email text,
+    target_email text,
+    action_type text not null,
+    before_value text,
+    after_value text,
+    note text,
+    created_at timestamptz not null default now()
+);
+
+-- audit_log ポリシー（認証ユーザーが insert/select 可能）
+alter table public.audit_log enable row level security;
+
+drop policy if exists audit_log_select_admin on public.audit_log;
+create policy audit_log_select_admin on public.audit_log
+for select using (auth.uid() is not null);
+
+drop policy if exists audit_log_insert_authenticated on public.audit_log;
+create policy audit_log_insert_authenticated on public.audit_log
+for insert with check (auth.uid() is not null);
+
+-- anon（一時運用）からも insert 可能にする
+
+create table if not exists public.meeting_settings (
+    setting_key text primary key,
+    setting_payload jsonb not null,
+    updated_at timestamptz not null default now(),
+    updated_by uuid
+);
+
+create table if not exists public.mail_notices (
+    id uuid primary key default gen_random_uuid(),
+    subject text not null,
+    greeting text,
+    purpose text,
+    notice_datetime_text text,
+    link_url text,
+    sender_info text,
+    target_type text not null default 'all' check (target_type in ('all', 'specific')),
+    requires_response boolean not null default false,
+    response_deadline_text text,
+    attachments jsonb not null default '[]'::jsonb,
+    status text not null default 'saved' check (status in ('saved', 'sent')),
+    sent_at timestamptz,
+    created_by_user_id uuid,
+    created_by_email text,
+    created_by_name text,
+    updated_by_user_id uuid,
+    updated_by_email text,
+    updated_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.mail_notice_recipients (
+    id bigserial primary key,
+    notice_id uuid not null references public.mail_notices(id) on delete cascade,
+    recipient_member_id text,
+    recipient_email text,
+    recipient_name text,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.mail_notice_templates (
+    id uuid primary key default gen_random_uuid(),
+    template_type text not null check (template_type in ('greeting', 'sender')),
+    template_name text not null,
+    template_body text not null,
+    created_by_user_id uuid,
+    created_by_email text,
+    created_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists mail_notices_status_updated_idx
+on public.mail_notices (status, updated_at desc);
+
+create index if not exists mail_notice_recipients_notice_idx
+on public.mail_notice_recipients (notice_id);
+
+create index if not exists mail_notice_recipients_email_idx
+on public.mail_notice_recipients (recipient_email);
+
+create index if not exists mail_notice_templates_type_updated_idx
+on public.mail_notice_templates (template_type, updated_at desc);
+
+create table if not exists public.member_positions_master (
+    position_name text primary key,
+    sort_order int not null default 100,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.member_directory (
+    member_id text primary key,
+    full_name text not null,
+    furigana text,
+    seat_number int check (seat_number is null or seat_number > 0),
+    photo_path text,
+    is_current boolean not null default true,
+    postal_code text,
+    address text,
+    phone text,
+    mobile text,
+    category text not null check (category in ('議員', '職員', '議会職員', '市職員')),
+    position_name text,
+    access_role text not null default '使用者' check (access_role in ('管理者', '使用者')),
+    email text,
+    committee text check (committee in ('総務委員会', '産業建設委員会', '教育民生委員会', '総務', '産業建設', '教育民生')),
+    committee_role text check (committee_role in ('委員長', '副委員長', '委員')),
+    is_giun boolean not null default false,
+    giun_role text check (giun_role in ('委員長', '委員')),
+    is_editorial_committee boolean not null default false,
+    editorial_role text check (editorial_role in ('委員長', '委員')),
+    is_dx_suishin boolean not null default false,
+    dx_suishin_role text check (dx_suishin_role in ('委員長', '委員')),
+    notes text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.announcements (
+    no bigserial primary key,
+    notice_date date not null,
+    start_time time not null,
+    end_time time not null,
+    title text not null,
+    content text not null,
+    owner_name text,
+    contact_phone text,
+    contact_email text,
+    remarks text,
+    lifecycle_status text not null default 'active' check (lifecycle_status in ('active', 'updated', 'canceled', 'archived')),
+    version_no bigint not null default 1,
+    canceled_at timestamptz,
+    canceled_by_email text,
+    cancel_note text,
+    google_calendar_event_id text,
+    google_calendar_event_link text,
+    google_calendar_synced_at timestamptz,
+    visibility text not null default 'all' check (visibility in ('all', 'specific')),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint announcements_time_check check (start_time <= end_time)
+);
+
+create table if not exists public.system_requests (
+    id bigserial primary key,
+    title text,
+    body text not null,
+    response_flag text not null default 'pending' check (response_flag in ('pending', 'accepted', 'rejected')),
+    is_completed boolean not null default false,
+    completed_at timestamptz,
+    created_by_email text,
+    created_by_name text,
+    updated_by_email text,
+    updated_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.announcement_recipients (
+    id bigserial primary key,
+    announcement_no bigint not null references public.announcements(no) on delete cascade,
+    recipient_email text not null,
+    recipient_name text,
+    assigned_at timestamptz not null default now()
+);
+
+create table if not exists public.announcement_attendance_responses (
+    id bigserial primary key,
+    announcement_no bigint not null references public.announcements(no) on delete cascade,
+    responder_email text not null,
+    responder_name text,
+    status text not null check (status in ('attend', 'absent', 'pending')),
+    comment text,
+    responded_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (announcement_no, responder_email)
+);
+
+create table if not exists public.announcement_calendar_links (
+    id bigserial primary key,
+    announcement_no bigint not null references public.announcements(no) on delete cascade,
+    member_email text not null,
+    google_event_id text,
+    google_event_link text,
+    last_synced_version bigint not null default 1,
+    sync_status text not null default 'synced' check (sync_status in ('synced', 'needs_update', 'canceled_pending', 'canceled_synced', 'failed')),
+    last_synced_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (announcement_no, member_email)
+);
+
+create table if not exists public.activity_records (
+    id bigserial primary key,
+    user_email text not null,
+    user_name text,
+    activity_date date not null,
+    activity_title text not null,
+    activity_status text check (activity_status in ('記録済', '未実施', '継続中', '保留中', '完了')),
+    activity_content text not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.committee_materials (
+    id bigserial primary key,
+    committee_name text not null check (committee_name in ('総務委員会', '産業建設委員会', '教育民生委員会', '議会運営委員会', '編集委員会')),
+    material_date date not null,
+    title text not null,
+    content text not null,
+    attachment_url text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.committee_activity_posts (
+    id bigserial primary key,
+    committee_name text not null check (committee_name in ('総務委員会', '産業建設委員会', '教育民生委員会', '議会運営委員会', '編集委員会')),
+    activity_date date not null,
+    title text not null,
+    activity_content text not null,
+    attachments jsonb not null default '[]'::jsonb,
+    created_by_user_id uuid,
+    created_by_email text not null,
+    created_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists public.committee_activity_recipients (
+    id bigserial primary key,
+    post_id bigint not null references public.committee_activity_posts(id) on delete cascade,
+    recipient_member_id text,
+    recipient_email text not null,
+    recipient_name text,
+    committee_name text not null,
+    assigned_at timestamptz not null default now()
+);
+
+-- 既存テーブル向けカラム追加（CREATE TABLE IF NOT EXISTS では既存テーブルには反映されないため）
+alter table public.member_directory add column if not exists kaiha text;
+alter table public.announcements add column if not exists visibility text not null default 'all' check (visibility in ('all', 'specific'));
+alter table public.announcements add column if not exists attendance_required boolean not null default false;
+alter table public.announcements add column if not exists attendance_deadline timestamptz;
+alter table public.announcements add column if not exists google_calendar_event_id text;
+alter table public.announcements add column if not exists google_calendar_event_link text;
+alter table public.announcements add column if not exists google_calendar_synced_at timestamptz;
+alter table public.announcements add column if not exists lifecycle_status text not null default 'active' check (lifecycle_status in ('active', 'updated', 'canceled', 'archived'));
+alter table public.announcements add column if not exists version_no bigint not null default 1;
+alter table public.announcements add column if not exists canceled_at timestamptz;
+alter table public.announcements add column if not exists canceled_by_email text;
+alter table public.announcements add column if not exists cancel_note text;
+alter table public.activity_records add column if not exists activity_status text check (activity_status in ('記録済', '未実施', '継続中', '保留中', '完了'));
+alter table public.system_requests add column if not exists title text;
+alter table public.system_requests add column if not exists body text;
+alter table public.system_requests add column if not exists response_flag text not null default 'pending' check (response_flag in ('pending', 'accepted', 'rejected'));
+alter table public.system_requests add column if not exists is_completed boolean not null default false;
+alter table public.system_requests add column if not exists completed_at timestamptz;
+alter table public.system_requests add column if not exists created_by_email text;
+alter table public.system_requests add column if not exists created_by_name text;
+alter table public.system_requests add column if not exists updated_by_email text;
+alter table public.system_requests add column if not exists updated_by_name text;
+alter table public.system_requests add column if not exists created_at timestamptz not null default now();
+alter table public.system_requests add column if not exists updated_at timestamptz not null default now();
+
+-- 委員会活動（議案）テーブル
+create table if not exists public.committee_bills (
+    id bigserial primary key,
+    committee text not null check (committee in ('giun', 'soumu', 'kyoiku', 'sangyo')),
+    title text not null,
+    content text,
+    is_completed boolean not null default false,
+    completed_at timestamptz,
+    created_by_email text,
+    created_by_name text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+alter table public.committee_bills enable row level security;
+
+create policy committee_bills_select on public.committee_bills
+    for select using (true);
+
+create policy committee_bills_insert on public.committee_bills
+    for insert with check (auth.role() = 'authenticated');
+
+create policy committee_bills_update on public.committee_bills
+    for update using (auth.role() = 'authenticated');
+
+create policy committee_bills_delete on public.committee_bills
+    for delete using (public.is_portal_admin());
+
+create index if not exists announcements_notice_date_idx
+on public.announcements (notice_date desc, start_time asc);
+
+create index if not exists announcement_recipients_email_idx
+on public.announcement_recipients (recipient_email, assigned_at desc);
+
+create index if not exists announcement_recipients_announcement_idx
+on public.announcement_recipients (announcement_no);
+
+create index if not exists announcement_attendance_responses_announcement_idx
+on public.announcement_attendance_responses (announcement_no, responded_at desc);
+
+create index if not exists announcement_attendance_responses_email_idx
+on public.announcement_attendance_responses (responder_email, responded_at desc);
+
+create index if not exists announcements_lifecycle_status_idx
+on public.announcements (lifecycle_status, notice_date desc, start_time asc);
+
+create index if not exists system_requests_updated_at_idx
+on public.system_requests (is_completed, updated_at desc);
+
+create index if not exists system_requests_response_flag_idx
+on public.system_requests (response_flag, updated_at desc);
+
+create index if not exists announcement_calendar_links_member_idx
+on public.announcement_calendar_links (member_email, updated_at desc);
+
+create index if not exists announcement_calendar_links_announcement_idx
+on public.announcement_calendar_links (announcement_no, updated_at desc);
+
+create index if not exists activity_records_user_date_idx
+on public.activity_records (user_email, activity_date desc, created_at desc);
+
+create index if not exists committee_materials_committee_date_idx
+on public.committee_materials (committee_name, material_date desc, created_at desc);
+
+create index if not exists committee_activity_posts_date_idx
+on public.committee_activity_posts (activity_date desc, created_at desc);
+
+create index if not exists committee_activity_recipients_email_idx
+on public.committee_activity_recipients (recipient_email, assigned_at desc);
+
+create index if not exists committee_activity_recipients_post_idx
+on public.committee_activity_recipients (post_id);
+
+alter table public.member_directory add column if not exists is_current boolean not null default true;
+alter table public.member_directory add column if not exists access_role text not null default '使用者';
+alter table public.member_directory add column if not exists furigana text;
+alter table public.member_directory add column if not exists seat_number int;
+alter table public.member_directory add column if not exists photo_path text;
+alter table public.member_directory add column if not exists giun_role text;
+alter table public.member_directory add column if not exists editorial_role text;
+alter table public.member_directory add column if not exists is_dx_suishin boolean not null default false;
+alter table public.member_directory add column if not exists dx_suishin_role text;
+alter table public.committee_activity_posts add column if not exists created_by_user_id uuid;
+
+update public.committee_activity_posts p
+set created_by_user_id = pr.user_id
+from public.profiles pr
+where p.created_by_user_id is null
+    and lower(trim(p.created_by_email)) = lower(trim(pr.email));
+
+-- 既存DB向け: 役職フィールドの値を正規化し、制約を安全に追加
+update public.member_directory
+set giun_role = null
+where giun_role is not null
+  and giun_role not in ('委員長', '委員');
+
+update public.member_directory
+set editorial_role = null
+where editorial_role is not null
+  and editorial_role not in ('委員長', '委員');
+
+update public.member_directory
+set dx_suishin_role = null
+where dx_suishin_role is not null
+  and dx_suishin_role not in ('委員長', '委員');
+
+update public.member_directory
+set seat_number = null
+where seat_number is not null
+    and seat_number <= 0;
+
+do $$
+begin
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'member_directory_giun_role_check'
+    ) then
+        alter table public.member_directory
+            add constraint member_directory_giun_role_check
+            check (giun_role is null or giun_role in ('委員長', '委員'));
+    end if;
+
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'member_directory_editorial_role_check'
+    ) then
+        alter table public.member_directory
+            add constraint member_directory_editorial_role_check
+            check (editorial_role is null or editorial_role in ('委員長', '委員'));
+    end if;
+
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'member_directory_dx_suishin_role_check'
+    ) then
+        alter table public.member_directory
+            add constraint member_directory_dx_suishin_role_check
+            check (dx_suishin_role is null or dx_suishin_role in ('委員長', '委員'));
+    end if;
+
+    -- 区分：画面が「議会職員」「市職員」を選択肢に持つため、旧制約(議員/職員のみ)を緩和
+    alter table public.member_directory drop constraint if exists member_directory_category_check;
+    alter table public.member_directory
+        add constraint member_directory_category_check
+        check (category in ('議員', '職員', '議会職員', '市職員'));
+
+    if not exists (
+        select 1
+        from pg_constraint
+        where conname = 'member_directory_seat_number_check'
+    ) then
+        alter table public.member_directory
+            add constraint member_directory_seat_number_check
+            check (seat_number is null or seat_number > 0);
+    end if;
+end $$;
+
+alter table public.profiles enable row level security;
+alter table public.meeting_settings enable row level security;
+alter table public.mail_notices enable row level security;
+alter table public.mail_notice_recipients enable row level security;
+alter table public.mail_notice_templates enable row level security;
+alter table public.member_positions_master enable row level security;
+alter table public.member_directory enable row level security;
+alter table public.announcements enable row level security;
+alter table public.announcement_recipients enable row level security;
+alter table public.announcement_attendance_responses enable row level security;
+alter table public.announcement_calendar_links enable row level security;
+alter table public.activity_records enable row level security;
+alter table public.committee_materials enable row level security;
+alter table public.committee_activity_posts enable row level security;
+alter table public.committee_activity_recipients enable row level security;
+alter table public.system_requests enable row level security;
+
+-- profiles ポリシー: 認証ユーザー向けのみ
+drop policy if exists profiles_select_own_or_admin on public.profiles;
+drop policy if exists profiles_insert_own on public.profiles;
+drop policy if exists profiles_update_admin_only on public.profiles;
+
+-- 認証ユーザー向けシンプルなポリシー（auth.uid()が not null の場合のみ）
+drop policy if exists profiles_select_authenticated on public.profiles;
+create policy profiles_select_authenticated on public.profiles
+for select using (auth.uid() is not null);
+
+drop policy if exists profiles_insert_authenticated on public.profiles;
+create policy profiles_insert_authenticated on public.profiles
+for insert with check (auth.uid() is not null and auth.uid() = user_id);
+
+drop policy if exists profiles_update_authenticated on public.profiles;
+create policy profiles_update_authenticated on public.profiles
+for update using (auth.uid() is not null);
+
+-- meeting_settings ポリシー（認証ユーザー向け）
+drop policy if exists meeting_settings_select_authenticated on public.meeting_settings;
+create policy meeting_settings_select_authenticated on public.meeting_settings
+for select using (auth.uid() is not null);
+
+drop policy if exists meeting_settings_upsert_editor_or_admin on public.meeting_settings;
+create policy meeting_settings_upsert_editor_or_admin on public.meeting_settings
+for insert with check (
+    auth.uid() is not null
+    and (
+        exists (
+            select 1
+            from public.profiles p
+            where p.user_id = auth.uid()
+              and p.role in ('editor', 'admin')
+        )
+        or exists (
+            select 1
+            from public.member_directory m
+            where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and m.is_current = true
+              and m.access_role = '管理者'
+        )
+        or exists (
+            select 1
+            from public.member_directory m
+            where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and m.is_current = true
+              and (
+                  setting_key = ('user_gemini_' || m.member_id)
+                  or setting_key = ('user_general_question_draft_' || m.member_id)
+              )
+        )
+    )
+);
+
+drop policy if exists meeting_settings_update_editor_or_admin on public.meeting_settings;
+create policy meeting_settings_update_editor_or_admin on public.meeting_settings
+for update using (
+    auth.uid() is not null
+    and (
+        exists (
+            select 1
+            from public.profiles p
+            where p.user_id = auth.uid()
+              and p.role in ('editor', 'admin')
+        )
+        or exists (
+            select 1
+            from public.member_directory m
+            where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and m.is_current = true
+              and m.access_role = '管理者'
+        )
+        or exists (
+            select 1
+            from public.member_directory m
+            where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and m.is_current = true
+              and (
+                  setting_key = ('user_gemini_' || m.member_id)
+                  or setting_key = ('user_general_question_draft_' || m.member_id)
+              )
+        )
+    )
+)
+with check (
+    auth.uid() is not null
+    and (
+        exists (
+            select 1
+            from public.profiles p
+            where p.user_id = auth.uid()
+              and p.role in ('editor', 'admin')
+        )
+        or exists (
+            select 1
+            from public.member_directory m
+            where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and m.is_current = true
+              and m.access_role = '管理者'
+        )
+        or exists (
+            select 1
+            from public.member_directory m
+            where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              and m.is_current = true
+              and (
+                  setting_key = ('user_gemini_' || m.member_id)
+                  or setting_key = ('user_general_question_draft_' || m.member_id)
+              )
+        )
+    )
+);
+
+-- 管理者判定（RLS共通）
+create or replace function public.is_portal_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+    select
+        auth.uid() is not null
+        and (
+            exists (
+                select 1
+                from public.profiles p
+                where p.user_id = auth.uid()
+                  and p.role = 'admin'
+            )
+            or exists (
+                select 1
+                from public.member_directory m
+                where lower(trim(m.email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+                  and m.is_current = true
+                  and m.access_role = '管理者'
+            )
+        );
+$$;
+
+revoke all on function public.is_portal_admin() from public;
+grant execute on function public.is_portal_admin() to authenticated;
+grant execute on function public.is_portal_admin() to service_role;
+
+-- mail_notices ポリシー
+drop policy if exists mail_notices_select_admin on public.mail_notices;
+create policy mail_notices_select_admin on public.mail_notices
+for select using (public.is_portal_admin());
+
+drop policy if exists mail_notices_insert_admin on public.mail_notices;
+create policy mail_notices_insert_admin on public.mail_notices
+for insert with check (public.is_portal_admin());
+
+drop policy if exists mail_notices_update_admin on public.mail_notices;
+create policy mail_notices_update_admin on public.mail_notices
+for update using (public.is_portal_admin())
+with check (public.is_portal_admin());
+
+drop policy if exists mail_notices_delete_admin on public.mail_notices;
+create policy mail_notices_delete_admin on public.mail_notices
+for delete using (public.is_portal_admin());
+
+-- mail_notice_recipients ポリシー
+drop policy if exists mail_notice_recipients_select_admin on public.mail_notice_recipients;
+create policy mail_notice_recipients_select_admin on public.mail_notice_recipients
+for select using (public.is_portal_admin());
+
+drop policy if exists mail_notice_recipients_insert_admin on public.mail_notice_recipients;
+create policy mail_notice_recipients_insert_admin on public.mail_notice_recipients
+for insert with check (public.is_portal_admin());
+
+drop policy if exists mail_notice_recipients_update_admin on public.mail_notice_recipients;
+create policy mail_notice_recipients_update_admin on public.mail_notice_recipients
+for update using (public.is_portal_admin())
+with check (public.is_portal_admin());
+
+drop policy if exists mail_notice_recipients_delete_admin on public.mail_notice_recipients;
+create policy mail_notice_recipients_delete_admin on public.mail_notice_recipients
+for delete using (public.is_portal_admin());
+
+-- mail_notice_templates ポリシー
+drop policy if exists mail_notice_templates_select_admin on public.mail_notice_templates;
+create policy mail_notice_templates_select_admin on public.mail_notice_templates
+for select using (public.is_portal_admin());
+
+drop policy if exists mail_notice_templates_insert_admin on public.mail_notice_templates;
+create policy mail_notice_templates_insert_admin on public.mail_notice_templates
+for insert with check (public.is_portal_admin());
+
+drop policy if exists mail_notice_templates_update_admin on public.mail_notice_templates;
+create policy mail_notice_templates_update_admin on public.mail_notice_templates
+for update using (public.is_portal_admin())
+with check (public.is_portal_admin());
+
+drop policy if exists mail_notice_templates_delete_admin on public.mail_notice_templates;
+create policy mail_notice_templates_delete_admin on public.mail_notice_templates
+for delete using (public.is_portal_admin());
+
+-- ----------------------------------------------------------------------
+-- member_positions_master ポリシー（認証ユーザー全員が読み取り可、管理者のみ書き込み）
+drop policy if exists member_positions_master_select_authenticated on public.member_positions_master;
+create policy member_positions_master_select_authenticated on public.member_positions_master
+for select using (auth.uid() is not null);
+
+drop policy if exists member_positions_master_insert_admin on public.member_positions_master;
+create policy member_positions_master_insert_admin on public.member_positions_master
+for insert with check (public.is_portal_admin());
+
+drop policy if exists member_positions_master_update_admin on public.member_positions_master;
+create policy member_positions_master_update_admin on public.member_positions_master
+for update using (public.is_portal_admin());
+
+drop policy if exists member_positions_master_delete_admin on public.member_positions_master;
+create policy member_positions_master_delete_admin on public.member_positions_master
+for delete using (public.is_portal_admin());
+
+-- member_directory ポリシー（認証ユーザー全員が読み取り可、管理者のみ書き込み）
+drop policy if exists member_directory_select_authenticated on public.member_directory;
+create policy member_directory_select_authenticated on public.member_directory
+for select using (auth.uid() is not null);
+
+drop policy if exists member_directory_insert_admin on public.member_directory;
+create policy member_directory_insert_admin on public.member_directory
+for insert with check (public.is_portal_admin());
+
+drop policy if exists member_directory_update_admin on public.member_directory;
+drop policy if exists member_directory_update_admin_or_self on public.member_directory;
+create policy member_directory_update_admin_or_self on public.member_directory
+for update using (
+    public.is_portal_admin()
+    or lower(trim(email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+)
+with check (
+    public.is_portal_admin()
+    or true
+);
+
+drop policy if exists member_directory_delete_admin on public.member_directory;
+create policy member_directory_delete_admin on public.member_directory
+for delete using (public.is_portal_admin());
+
+-- announcements ポリシー（Supabase Auth運用）
+-- 読み取り: 全員（visibility='all'）または配信対象者
+-- 書き込み: 管理者のみ
+-- 管理者判定は public.is_portal_admin() を利用
+
+drop policy if exists announcements_select_authenticated on public.announcements;
+drop policy if exists announcements_select_all on public.announcements;
+drop policy if exists announcements_select_specific_recipient_or_admin on public.announcements;
+
+create policy announcements_select_all on public.announcements
+for select using (
+    visibility = 'all'
+);
+
+create policy announcements_select_specific_recipient_or_admin on public.announcements
+for select using (
+    visibility = 'specific'
+    and auth.uid() is not null
+    and (
+        public.is_portal_admin()
+        or exists (
+            select 1
+            from public.announcement_recipients ar
+            where ar.announcement_no = announcements.no
+              and lower(trim(ar.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        )
+    )
+);
+
+drop policy if exists announcements_insert_admin on public.announcements;
+create policy announcements_insert_admin on public.announcements
+for insert with check (public.is_portal_admin());
+
+drop policy if exists announcements_update_admin on public.announcements;
+create policy announcements_update_admin on public.announcements
+for update using (public.is_portal_admin())
+with check (public.is_portal_admin());
+
+drop policy if exists announcements_delete_admin on public.announcements;
+create policy announcements_delete_admin on public.announcements
+for delete using (public.is_portal_admin());
+
+-- announcement_recipients ポリシー
+drop policy if exists announcement_recipients_select_own_or_admin on public.announcement_recipients;
+create policy announcement_recipients_select_own_or_admin on public.announcement_recipients
+for select using (
+    public.is_portal_admin()
+    or lower(trim(recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+-- system_requests ポリシー（ログインユーザー全員が閲覧・登録・更新可能）
+drop policy if exists system_requests_select_authenticated on public.system_requests;
+create policy system_requests_select_authenticated on public.system_requests
+for select using (auth.uid() is not null);
+
+drop policy if exists system_requests_insert_authenticated on public.system_requests;
+create policy system_requests_insert_authenticated on public.system_requests
+for insert with check (auth.uid() is not null);
+
+drop policy if exists system_requests_update_authenticated on public.system_requests;
+create policy system_requests_update_authenticated on public.system_requests
+for update using (auth.uid() is not null)
+with check (auth.uid() is not null);
+
+drop policy if exists announcement_recipients_insert_admin on public.announcement_recipients;
+create policy announcement_recipients_insert_admin on public.announcement_recipients
+for insert with check (public.is_portal_admin());
+
+drop policy if exists announcement_recipients_delete_admin on public.announcement_recipients;
+create policy announcement_recipients_delete_admin on public.announcement_recipients
+for delete using (public.is_portal_admin());
+
+-- announcement_attendance_responses ポリシー
+drop policy if exists announcement_attendance_responses_select_own_or_admin on public.announcement_attendance_responses;
+create policy announcement_attendance_responses_select_own_or_admin on public.announcement_attendance_responses
+for select using (
+    public.is_portal_admin()
+    or (
+        lower(trim(responder_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        and exists (
+            select 1
+            from public.announcements a
+            where a.no = announcement_attendance_responses.announcement_no
+              and (
+                  a.visibility = 'all'
+                  or exists (
+                      select 1
+                      from public.announcement_recipients ar
+                      where ar.announcement_no = a.no
+                        and lower(trim(ar.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+                  )
+              )
+        )
+    )
+);
+
+drop policy if exists announcement_attendance_responses_insert_own_or_admin on public.announcement_attendance_responses;
+create policy announcement_attendance_responses_insert_own_or_admin on public.announcement_attendance_responses
+for insert with check (
+    public.is_portal_admin()
+    or (
+        lower(trim(responder_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        and exists (
+            select 1
+            from public.announcements a
+            where a.no = announcement_attendance_responses.announcement_no
+              and (
+                  a.visibility = 'all'
+                  or exists (
+                      select 1
+                      from public.announcement_recipients ar
+                      where ar.announcement_no = a.no
+                        and lower(trim(ar.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+                  )
+              )
+        )
+    )
+);
+
+drop policy if exists announcement_attendance_responses_update_own_or_admin on public.announcement_attendance_responses;
+create policy announcement_attendance_responses_update_own_or_admin on public.announcement_attendance_responses
+for update using (
+    public.is_portal_admin()
+    or (
+        lower(trim(responder_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        and exists (
+            select 1
+            from public.announcements a
+            where a.no = announcement_attendance_responses.announcement_no
+              and (
+                  a.visibility = 'all'
+                  or exists (
+                      select 1
+                      from public.announcement_recipients ar
+                      where ar.announcement_no = a.no
+                        and lower(trim(ar.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+                  )
+              )
+        )
+    )
+)
+with check (
+    public.is_portal_admin()
+    or (
+        lower(trim(responder_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        and exists (
+            select 1
+            from public.announcements a
+            where a.no = announcement_attendance_responses.announcement_no
+              and (
+                  a.visibility = 'all'
+                  or exists (
+                      select 1
+                      from public.announcement_recipients ar
+                      where ar.announcement_no = a.no
+                        and lower(trim(ar.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+                  )
+              )
+        )
+    )
+);
+
+drop policy if exists announcement_attendance_responses_delete_admin on public.announcement_attendance_responses;
+create policy announcement_attendance_responses_delete_admin on public.announcement_attendance_responses
+for delete using (public.is_portal_admin());
+
+-- announcement_calendar_links ポリシー
+drop policy if exists announcement_calendar_links_select_own_or_admin on public.announcement_calendar_links;
+create policy announcement_calendar_links_select_own_or_admin on public.announcement_calendar_links
+for select using (
+    public.is_portal_admin()
+    or lower(trim(member_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists announcement_calendar_links_insert_own_or_admin on public.announcement_calendar_links;
+create policy announcement_calendar_links_insert_own_or_admin on public.announcement_calendar_links
+for insert with check (
+    public.is_portal_admin()
+    or lower(trim(member_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists announcement_calendar_links_update_own_or_admin on public.announcement_calendar_links;
+create policy announcement_calendar_links_update_own_or_admin on public.announcement_calendar_links
+for update using (
+    public.is_portal_admin()
+    or lower(trim(member_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+)
+with check (
+    public.is_portal_admin()
+    or lower(trim(member_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists announcement_calendar_links_delete_own_or_admin on public.announcement_calendar_links;
+create policy announcement_calendar_links_delete_own_or_admin on public.announcement_calendar_links
+for delete using (
+    public.is_portal_admin()
+    or lower(trim(member_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+-- activity_records ポリシー（本人データのみ読み書き可）
+drop policy if exists activity_records_select_own on public.activity_records;
+create policy activity_records_select_own on public.activity_records
+for select using (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists activity_records_insert_own on public.activity_records;
+create policy activity_records_insert_own on public.activity_records
+for insert with check (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists activity_records_update_own on public.activity_records;
+create policy activity_records_update_own on public.activity_records
+for update using (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+)
+with check (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists activity_records_delete_own on public.activity_records;
+create policy activity_records_delete_own on public.activity_records
+for delete using (
+    auth.uid() is not null
+    and lower(trim(user_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+-- committee_materials ポリシー（全員閲覧可、管理者のみ書き込み）
+drop policy if exists committee_materials_select_authenticated on public.committee_materials;
+create policy committee_materials_select_authenticated on public.committee_materials
+for select using (auth.uid() is not null);
+
+drop policy if exists committee_materials_insert_admin on public.committee_materials;
+create policy committee_materials_insert_admin on public.committee_materials
+for insert with check (public.is_portal_admin());
+
+drop policy if exists committee_materials_update_admin on public.committee_materials;
+create policy committee_materials_update_admin on public.committee_materials
+for update using (public.is_portal_admin())
+with check (public.is_portal_admin());
+
+drop policy if exists committee_materials_delete_admin on public.committee_materials;
+create policy committee_materials_delete_admin on public.committee_materials
+for delete using (public.is_portal_admin());
+
+-- committee_activity_posts ポリシー
+drop policy if exists committee_activity_posts_select_own_or_admin on public.committee_activity_posts;
+create policy committee_activity_posts_select_own_or_admin on public.committee_activity_posts
+for select using (
+    auth.uid() is not null
+    and (
+        public.is_portal_admin()
+        or exists (
+            select 1
+            from public.committee_activity_recipients r
+            where r.post_id = committee_activity_posts.id
+              and lower(trim(r.recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+        )
+    )
+);
+
+drop policy if exists committee_activity_posts_insert_authenticated on public.committee_activity_posts;
+create policy committee_activity_posts_insert_authenticated on public.committee_activity_posts
+for insert with check (auth.uid() is not null);
+
+drop policy if exists committee_activity_posts_update_creator_or_admin on public.committee_activity_posts;
+create policy committee_activity_posts_update_creator_or_admin on public.committee_activity_posts
+for update using (
+    public.is_portal_admin()
+    or created_by_user_id = auth.uid()
+    or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+)
+with check (
+    public.is_portal_admin()
+    or created_by_user_id = auth.uid()
+    or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists committee_activity_posts_delete_creator_or_admin on public.committee_activity_posts;
+drop policy if exists committee_activity_posts_delete_creator_only on public.committee_activity_posts;
+create policy committee_activity_posts_delete_creator_only on public.committee_activity_posts
+for delete using (
+    created_by_user_id = auth.uid()
+    or lower(trim(created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+-- committee_activity_recipients ポリシー
+drop policy if exists committee_activity_recipients_select_own_or_admin on public.committee_activity_recipients;
+create policy committee_activity_recipients_select_own_or_admin on public.committee_activity_recipients
+for select using (
+    public.is_portal_admin()
+    or lower(trim(recipient_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+);
+
+drop policy if exists committee_activity_recipients_insert_authorized on public.committee_activity_recipients;
+create policy committee_activity_recipients_insert_authorized on public.committee_activity_recipients
+for insert with check (
+    auth.uid() is not null
+    and (
+        public.is_portal_admin()
+        or exists (
+            select 1
+            from public.committee_activity_posts p
+            where p.id = post_id
+              and (
+                  p.created_by_user_id = auth.uid()
+                  or lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+              )
+        )
+    )
+);
+
+drop policy if exists committee_activity_recipients_delete_authorized on public.committee_activity_recipients;
+drop policy if exists committee_activity_recipients_delete_creator_only on public.committee_activity_recipients;
+create policy committee_activity_recipients_delete_creator_only on public.committee_activity_recipients
+for delete using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.committee_activity_posts p
+        where p.id = post_id
+          and (
+              p.created_by_user_id = auth.uid()
+              or lower(trim(p.created_by_email)) = lower(trim(coalesce(auth.jwt()->>'email', '')))
+          )
+    )
+);
+
+-- ----------------------------------------------------------------------
+-- member_directory -> profiles 同期
+-- 目的:
+-- 1) member_directory の氏名・区分(議員/職員)を profiles へ反映
+-- 2) メール表記揺れ（大文字・前後空白）を吸収
+--
+-- 注意:
+-- profiles.user_id は auth.users と連動するため、
+-- member_directory から新規 profiles 行は作成せず「既存 profiles のみ更新」する。
+-- ----------------------------------------------------------------------
+
+-- メール正規化（小文字・trim）
+update public.member_directory
+set email = lower(trim(email))
+where email is not null and email <> lower(trim(email));
+
+update public.profiles
+set email = lower(trim(email))
+where email is not null and email <> lower(trim(email));
+
+-- 大文字小文字を無視した一意制約
+create unique index if not exists profiles_email_lower_uniq
+on public.profiles ((lower(email)));
+
+create unique index if not exists member_directory_email_lower_uniq
+on public.member_directory ((lower(email)))
+where email is not null;
+
+-- 権限を profiles.role にマップ
+create or replace function public.map_member_access_role_to_profile_role(access_role_value text)
+returns text
+language sql
+immutable
+as $$
+    select case
+        when access_role_value = '管理者' then 'admin'
+        else 'viewer'
+    end;
+$$;
+
+create sequence if not exists public.member_directory_seq start 1;
+
+create or replace function public.normalize_member_position(category_value text, position_value text)
+returns text
+language sql
+immutable
+as $$
+    select case
+        when category_value = '議員' and position_value in ('議長', '副議長', '未') then position_value
+        when category_value = '職員' and position_value in ('局長', '副局長', '未') then position_value
+        when category_value in ('議員', '職員') then '未'
+        else coalesce(position_value, '未')
+    end;
+$$;
+
+create or replace function public.apply_member_directory_rules()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    admin_count integer;
+begin
+    if new.member_id is null or btrim(new.member_id) = '' then
+        new.member_id := 'M' || lpad(nextval('public.member_directory_seq')::text, 4, '0');
+    end if;
+
+    if new.email is not null then
+        new.email := nullif(lower(trim(new.email)), '');
+    end if;
+
+    new.full_name := btrim(new.full_name);
+    new.access_role := coalesce(nullif(new.access_role, ''), '使用者');
+    new.category := coalesce(nullif(new.category, ''), '議員');
+    if new.seat_number is not null and new.seat_number <= 0 then
+        new.seat_number := null;
+    end if;
+    new.position_name := public.normalize_member_position(new.category, coalesce(nullif(new.position_name, ''), '未'));
+    new.updated_at := now();
+
+    if new.access_role = '管理者' then
+        select count(*)
+          into admin_count
+          from public.member_directory
+         where access_role = '管理者'
+           and member_id <> coalesce(new.member_id, '');
+
+        if admin_count >= 4 then
+            raise exception '管理者は4人までしか登録できません。';
+        end if;
+    end if;
+
+    return new;
+end;
+$$;
+
+drop trigger if exists trg_apply_member_directory_rules on public.member_directory;
+create trigger trg_apply_member_directory_rules
+before insert or update on public.member_directory
+for each row
+execute function public.apply_member_directory_rules();
+
+-- member_directory 変更時に profiles を更新
+create or replace function public.sync_member_directory_to_profiles()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    normalized_email text;
+begin
+    normalized_email := nullif(lower(trim(new.email)), '');
+
+    if normalized_email is null then
+        return new;
+    end if;
+
+    update public.profiles
+    set
+        email = normalized_email,
+        display_name = coalesce(nullif(new.full_name, ''), display_name),
+        role = public.map_member_access_role_to_profile_role(new.access_role)
+    where lower(email) = normalized_email;
+
+    return new;
+end;
+$$;
+
+drop trigger if exists trg_sync_member_directory_to_profiles on public.member_directory;
+create trigger trg_sync_member_directory_to_profiles
+after insert or update of email, full_name, category
+on public.member_directory
+for each row
+execute function public.sync_member_directory_to_profiles();
+
+-- 初回バックフィル（既存データを一括同期）
+update public.profiles p
+set
+    display_name = coalesce(nullif(m.full_name, ''), p.display_name),
+    role = public.map_member_access_role_to_profile_role(m.access_role)
+from public.member_directory m
+where m.email is not null
+  and lower(trim(m.email)) = lower(trim(p.email));
+
+insert into public.member_positions_master (position_name, sort_order)
+values
+    ('未', 0),
+    ('議長', 10),
+    ('副議長', 20),
+    ('局長', 30),
+    ('副局長', 40),
+    ('委員長', 50),
+    ('副委員長', 60),
+    ('委員', 70),
+    ('その他', 999)
+on conflict (position_name) do nothing;
+
+-- 初回管理者を作る場合（auth.usersの対象ユーザーIDを指定）
+-- update public.profiles set role = 'admin' where email = 'admin@example.com';
+
+-- ----------------------------------------------------------------------
+-- document_notes テーブル（議案メモ：個人専用）
+-- 議案PDFを閲覧中に書いたメモを1資料1レコードで保存する。
+-- member_id でフィルタリングして本人のみ参照する運用（自己責任フィルタ）。
+-- ----------------------------------------------------------------------
+create table if not exists public.document_notes (
+    id bigserial primary key,
+    member_id text not null,
+    session_id text not null,
+    document_name text not null,
+    note_text text not null default '',
+    updated_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    unique (member_id, session_id, document_name)
+);
+
+alter table public.document_notes enable row level security;
+
+-- document_notes ポリシー（本人のデータのみ操作可）
+drop policy if exists document_notes_select_own on public.document_notes;
+create policy document_notes_select_own on public.document_notes
+for select using (member_id = public.current_member_id());
+
+drop policy if exists document_notes_insert_own on public.document_notes;
+create policy document_notes_insert_own on public.document_notes
+for insert with check (auth.uid() is not null and member_id = public.current_member_id());
+
+drop policy if exists document_notes_update_own on public.document_notes;
+create policy document_notes_update_own on public.document_notes
+for update using (member_id = public.current_member_id());
+
+drop policy if exists document_notes_delete_own on public.document_notes;
+create policy document_notes_delete_own on public.document_notes
+for delete using (member_id = public.current_member_id());
+
+-- ----------------------------------------------------------------------
+-- document_ink_notes テーブル（議案手書きメモ：個人専用）
+-- PDFビューア上に重ねて描いた線データを資料単位で保存する。
+-- member_id でフィルタリングして本人のみ参照する運用（自己責任フィルタ）。
+-- ----------------------------------------------------------------------
+create table if not exists public.document_ink_notes (
+    id bigserial primary key,
+    member_id text not null,
+    session_id text not null,
+    document_name text not null,
+    ink_payload jsonb not null default '[]'::jsonb,
+    updated_at timestamptz not null default now(),
+    created_at timestamptz not null default now(),
+    unique (member_id, session_id, document_name)
+);
+
+alter table public.document_ink_notes enable row level security;
+
+-- document_ink_notes ポリシー（本人のデータのみ操作可）
+drop policy if exists document_ink_notes_select_own on public.document_ink_notes;
+create policy document_ink_notes_select_own on public.document_ink_notes
+for select using (member_id = public.current_member_id());
+
+drop policy if exists document_ink_notes_insert_own on public.document_ink_notes;
+create policy document_ink_notes_insert_own on public.document_ink_notes
+for insert with check (auth.uid() is not null and member_id = public.current_member_id());
+
+drop policy if exists document_ink_notes_update_own on public.document_ink_notes;
+create policy document_ink_notes_update_own on public.document_ink_notes
+for update using (member_id = public.current_member_id());
+
+drop policy if exists document_ink_notes_delete_own on public.document_ink_notes;
+create policy document_ink_notes_delete_own on public.document_ink_notes
+for delete using (member_id = public.current_member_id());
+
+-- ----------------------------------------------------------------------
+-- general_question_tracker テーブル（一般質問の要望・答弁追跡）
+-- 一般質問で出た要望と答弁を案件として登録し、後続の実施状況を追跡する。
+-- ----------------------------------------------------------------------
+create table if not exists public.general_question_tracker (
+    id bigserial primary key,
+    owner_account_id uuid,
+    session_id text not null,
+    question_date date,
+    member_name text not null,
+    committee text,
+    category text,
+    department text,
+    request_summary text not null,
+    answer_summary text not null default '',
+    action_summary text not null default '',
+    status text not null default '未着手' check (status in ('未着手', '調査中', '進行中', '一部実施', '実施済み', '要再確認')),
+    evaluation text not null default '要確認' check (evaluation in ('要確認', '概ね良好', '一部不足', '未実施', '再質問候補')),
+    priority text not null default '中' check (priority in ('高', '中', '低')),
+    progress_percent int not null default 0 check (progress_percent >= 0 and progress_percent <= 100),
+    follow_up_due date,
+    hearing_url text,
+    source_excerpt text not null default '',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists general_question_tracker_session_idx
+on public.general_question_tracker (session_id);
+
+create index if not exists general_question_tracker_status_idx
+on public.general_question_tracker (status);
+
+create index if not exists general_question_tracker_member_idx
+on public.general_question_tracker (member_name);
+
+create index if not exists general_question_tracker_owner_idx
+on public.general_question_tracker (owner_account_id);
+
+alter table public.general_question_tracker
+add column if not exists owner_account_id uuid;
+
+alter table public.general_question_tracker enable row level security;
+
+-- general_question_tracker ポリシー（認証ユーザーは自分の案件のみ読み書き可）
+drop policy if exists general_question_tracker_select_authenticated on public.general_question_tracker;
+create policy general_question_tracker_select_authenticated on public.general_question_tracker
+for select using (auth.uid() is not null and owner_account_id = auth.uid());
+
+drop policy if exists general_question_tracker_insert_authenticated on public.general_question_tracker;
+create policy general_question_tracker_insert_authenticated on public.general_question_tracker
+for insert with check (auth.uid() is not null and owner_account_id = auth.uid());
+
+drop policy if exists general_question_tracker_update_authenticated on public.general_question_tracker;
+create policy general_question_tracker_update_authenticated on public.general_question_tracker
+for update using (auth.uid() is not null and owner_account_id = auth.uid())
+with check (auth.uid() is not null and owner_account_id = auth.uid());
+
+drop policy if exists general_question_tracker_delete_authenticated on public.general_question_tracker;
+create policy general_question_tracker_delete_authenticated on public.general_question_tracker
+for delete using (auth.uid() is not null and owner_account_id = auth.uid());
+
+-- ----------------------------------------------------------------------
+-- general_question_updates テーブル（一般質問の追跡更新履歴）
+-- 進捗確認・所見・再質問候補などを時系列で残す。
+-- ----------------------------------------------------------------------
+create table if not exists public.general_question_updates (
+    id bigserial primary key,
+    tracker_id bigint not null references public.general_question_tracker(id) on delete cascade,
+    update_date date not null default current_date,
+    status text not null default '進行中' check (status in ('未着手', '調査中', '進行中', '一部実施', '実施済み', '要再確認')),
+    evaluation text not null default '要確認' check (evaluation in ('要確認', '概ね良好', '一部不足', '未実施', '再質問候補')),
+    progress_percent int not null default 0 check (progress_percent >= 0 and progress_percent <= 100),
+    update_note text not null,
+    evidence_url text,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists general_question_updates_tracker_idx
+on public.general_question_updates (tracker_id, update_date desc);
+
+alter table public.general_question_updates enable row level security;
+
+-- general_question_updates ポリシー（親案件の所有者のみ読み書き可）
+drop policy if exists general_question_updates_select_authenticated on public.general_question_updates;
+create policy general_question_updates_select_authenticated on public.general_question_updates
+for select using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
+
+drop policy if exists general_question_updates_insert_authenticated on public.general_question_updates;
+create policy general_question_updates_insert_authenticated on public.general_question_updates
+for insert with check (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
+
+drop policy if exists general_question_updates_update_authenticated on public.general_question_updates;
+create policy general_question_updates_update_authenticated on public.general_question_updates
+for update using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+)
+with check (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
+
+drop policy if exists general_question_updates_delete_authenticated on public.general_question_updates;
+create policy general_question_updates_delete_authenticated on public.general_question_updates
+for delete using (
+    auth.uid() is not null
+    and exists (
+        select 1
+        from public.general_question_tracker t
+        where t.id = general_question_updates.tracker_id
+          and t.owner_account_id = auth.uid()
+    )
+);
+
+-- PostgREST のスキーマキャッシュを明示的に再読込
+-- 追加テーブルが API 経由で見えない場合の保険
+notify pgrst, 'reload schema';
+
+-- ============================================================
+-- 日程調整 テーブル
+-- ============================================================
+
+-- イベント（調整単位）
+create table if not exists public.schedule_events (
+    id          bigserial primary key,
+    title       text not null,
+    description text,
+    deadline    date,
+    is_closed   boolean not null default false,
+    created_by_email text,
+    created_by_name  text,
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now()
+);
+
+alter table public.schedule_events enable row level security;
+
+drop policy if exists schedule_events_select_authenticated on public.schedule_events;
+create policy schedule_events_select_authenticated on public.schedule_events
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_events_insert_authenticated on public.schedule_events;
+create policy schedule_events_insert_authenticated on public.schedule_events
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_events_update_authenticated on public.schedule_events;
+create policy schedule_events_update_authenticated on public.schedule_events
+for update using (auth.uid() is not null);
+
+drop policy if exists schedule_events_delete_authenticated on public.schedule_events;
+create policy schedule_events_delete_authenticated on public.schedule_events
+for delete using (auth.uid() is not null);
+
+-- 日程候補（スロット）
+create table if not exists public.schedule_slots (
+    id          bigserial primary key,
+    event_id    bigint not null references public.schedule_events(id) on delete cascade,
+    slot_date   date not null,
+    slot_start  time,
+    slot_end    time,
+    sort_order  int not null default 0,
+    created_at  timestamptz not null default now()
+);
+
+alter table public.schedule_slots enable row level security;
+
+drop policy if exists schedule_slots_select_authenticated on public.schedule_slots;
+create policy schedule_slots_select_authenticated on public.schedule_slots
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_slots_insert_authenticated on public.schedule_slots;
+create policy schedule_slots_insert_authenticated on public.schedule_slots
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_slots_delete_authenticated on public.schedule_slots;
+create policy schedule_slots_delete_authenticated on public.schedule_slots
+for delete using (auth.uid() is not null);
+
+-- 回答（○△×）
+create table if not exists public.schedule_responses (
+    id           bigserial primary key,
+    event_id     bigint not null,
+    slot_id      bigint not null references public.schedule_slots(id) on delete cascade,
+    member_email text not null,
+    member_name  text,
+    response     text not null check (response in ('circle', 'triangle', 'cross')),
+    created_at   timestamptz not null default now(),
+    updated_at   timestamptz not null default now(),
+    unique(slot_id, member_email)
+);
+
+alter table public.schedule_responses enable row level security;
+
+drop policy if exists schedule_responses_select_authenticated on public.schedule_responses;
+create policy schedule_responses_select_authenticated on public.schedule_responses
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_responses_insert_authenticated on public.schedule_responses;
+create policy schedule_responses_insert_authenticated on public.schedule_responses
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_responses_update_authenticated on public.schedule_responses;
+create policy schedule_responses_update_authenticated on public.schedule_responses
+for update using (auth.uid() is not null);
+
+drop policy if exists schedule_responses_delete_authenticated on public.schedule_responses;
+create policy schedule_responses_delete_authenticated on public.schedule_responses
+for delete using (auth.uid() is not null);
+
+notify pgrst, 'reload schema';
+
+-- 日程調整：対象者指定対応
+alter table public.schedule_events
+    add column if not exists visibility text not null default 'all'
+    check (visibility in ('all', 'specific'));
+
+create table if not exists public.schedule_recipients (
+    id           bigserial primary key,
+    event_id     bigint not null references public.schedule_events(id) on delete cascade,
+    member_email text not null,
+    unique(event_id, member_email)
+);
+
+alter table public.schedule_recipients enable row level security;
+
+drop policy if exists schedule_recipients_select_authenticated on public.schedule_recipients;
+create policy schedule_recipients_select_authenticated on public.schedule_recipients
+for select using (auth.uid() is not null);
+
+drop policy if exists schedule_recipients_insert_authenticated on public.schedule_recipients;
+create policy schedule_recipients_insert_authenticated on public.schedule_recipients
+for insert to authenticated with check (auth.uid() is not null);
+
+drop policy if exists schedule_recipients_delete_authenticated on public.schedule_recipients;
+create policy schedule_recipients_delete_authenticated on public.schedule_recipients
+for delete using (auth.uid() is not null);
+
+notify pgrst, 'reload schema';
+
+-- 日程調整：自動締め切り・決定日程
+alter table public.schedule_events
+    add column if not exists auto_close boolean not null default false;
+alter table public.schedule_events
+    add column if not exists decided_slot_id bigint references public.schedule_slots(id);
+
+notify pgrst, 'reload schema';
+
+-- 日程調整：全員一致必須・決定者記録（2026-08-19）
+alter table public.schedule_events
+    add column if not exists require_unanimous boolean not null default false;
+alter table public.schedule_events
+    add column if not exists decided_by_email text;
+alter table public.schedule_events
+    add column if not exists decided_by_name text;
+alter table public.schedule_events
+    add column if not exists decided_at timestamptz;
+
+notify pgrst, 'reload schema';
