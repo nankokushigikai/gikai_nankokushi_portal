@@ -82,13 +82,29 @@
                 </div>
             </div>
 
-            <!-- 決定日程バナー（締め切り後に表示） -->
+            <!-- 決定日程バナー（決定後に表示） -->
             <div id="decided-slot-banner" class="hidden bg-green-50 border border-green-300 rounded-xl p-4 mb-6">
                 <div class="flex items-center gap-2 mb-1">
                     <i class="fas fa-check-circle text-green-600 text-lg"></i>
                     <span class="font-bold text-green-800 text-base">決定日程</span>
                 </div>
                 <p id="decided-slot-text" class="text-green-900 font-semibold text-lg ml-6"></p>
+                <p id="decided-by-text" class="text-green-700 text-xs ml-6 mt-1"></p>
+            </div>
+
+            <!-- 回答完了・決定日程未定パネル（全員回答後、未決定の場合に表示） -->
+            <div id="pending-decision-panel" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6">
+                <div class="flex items-center gap-2 mb-1">
+                    <i class="fas fa-hourglass-half text-amber-600 text-lg"></i>
+                    <span class="font-bold text-amber-800 text-base">回答完了・決定日程は未定です</span>
+                </div>
+                <p id="pending-decision-reason" class="text-amber-700 text-sm ml-6 mb-3"></p>
+                <div id="pending-decision-controls" class="hidden ml-6 flex items-center gap-2 flex-wrap">
+                    <select id="pending-decision-select" class="border border-amber-300 rounded-lg px-2 py-1.5 text-sm"></select>
+                    <button id="pending-decision-btn" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                        <i class="fas fa-check mr-1"></i>この日程に決定してメール送信
+                    </button>
+                </div>
             </div>
 
             <p id="detail-message" class="text-sm mb-3 hidden"></p>
@@ -163,7 +179,12 @@
                         <input type="checkbox" id="create-auto-close" class="w-4 h-4">
                         <span class="text-sm font-semibold text-amber-800">全員が回答したら自動的に締め切る</span>
                     </label>
-                    <p class="text-xs text-amber-600 mt-1 ml-6">全員の回答が揃った時点で自動締切し、最も○が多い日程を決定日程として設定します。</p>
+                    <p class="text-xs text-amber-600 mt-1 ml-6">全員の回答が揃った時点で自動的に締め切り、最も○が多い日程（同数の場合は最も早い候補日）を決定日程とします。</p>
+                    <label class="flex items-center gap-2 cursor-pointer mt-2 ml-6">
+                        <input type="checkbox" id="create-require-unanimous" class="w-4 h-4">
+                        <span class="text-sm font-semibold text-amber-800">全員一致が必要（複数あった場合は一番早い日に決定する）</span>
+                    </label>
+                    <p class="text-xs text-amber-600 mt-1 ml-10">全員が同じ日に○を付けた場合のみ自動的に決定します。該当する日がない場合は決定されず、対象者が手動で決定できます。</p>
                 </div>
                 <p id="create-message" class="text-sm text-red-600 hidden"></p>
             </div>
@@ -226,7 +247,12 @@
                         <input type="checkbox" id="edit-auto-close" class="w-4 h-4">
                         <span class="text-sm font-semibold text-amber-800">全員が回答したら自動的に締め切る</span>
                     </label>
-                    <p class="text-xs text-amber-600 mt-1 ml-6">全員の回答が揃った時点で自動締切し、最も○が多い日程を決定日程として設定します。</p>
+                    <p class="text-xs text-amber-600 mt-1 ml-6">全員の回答が揃った時点で自動的に締め切り、最も○が多い日程（同数の場合は最も早い候補日）を決定日程とします。</p>
+                    <label class="flex items-center gap-2 cursor-pointer mt-2 ml-6">
+                        <input type="checkbox" id="edit-require-unanimous" class="w-4 h-4">
+                        <span class="text-sm font-semibold text-amber-800">全員一致が必要（複数あった場合は一番早い日に決定する）</span>
+                    </label>
+                    <p class="text-xs text-amber-600 mt-1 ml-10">全員が同じ日に○を付けた場合のみ自動的に決定します。該当する日がない場合は決定されず、対象者が手動で決定できます。</p>
                 </div>
                 <p id="edit-message" class="text-sm text-red-600 hidden"></p>
             </div>
@@ -413,9 +439,11 @@
             msg.classList.add("hidden");
             container.innerHTML = events.map(ev => {
                 const deadlineText = ev.deadline ? `回答期限: ${formatDate(ev.deadline)}` : "";
-                const statusBadge = ev.is_closed
-                    ? `<span class="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">✓ 完了</span>`
-                    : `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">受付中</span>`;
+                const statusBadge = !ev.is_closed
+                    ? `<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">受付中</span>`
+                    : ev.decided_slot_id
+                        ? `<span class="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">✓ 決定済み</span>`
+                        : `<span class="text-xs bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full">回答完了</span>`;
                 const targetBadge = ev.visibility === "specific"
                     ? `<span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">指定対象</span>` : "";
                 return `
@@ -463,23 +491,36 @@
                 ? `<span class="text-red-600 font-bold text-base">回答期限: ${escapeHtml(formatDate(ev.deadline))}</span>` : "";
             document.getElementById("detail-creator").textContent = "作成者: " + (ev.created_by_name || ev.created_by_email || "");
 
-            // 決定日程バナー
+            // 決定日程バナー / 回答完了・決定日程未定パネル
             const decidedBanner = document.getElementById("decided-slot-banner");
+            const pendingPanel = document.getElementById("pending-decision-panel");
             if (ev.is_closed && ev.decided_slot_id) {
                 const decidedSlot = currentSlots.find(s => s.id === ev.decided_slot_id);
                 if (decidedSlot) {
                     document.getElementById("decided-slot-text").textContent = formatSlotLabel(decidedSlot);
+                    document.getElementById("decided-by-text").textContent = `決定者: ${ev.decided_by_name || "不明"}`;
                     decidedBanner.classList.remove("hidden");
                 } else {
                     decidedBanner.classList.add("hidden");
                 }
+                pendingPanel.classList.add("hidden");
+            } else if (ev.is_closed && !ev.decided_slot_id) {
+                decidedBanner.classList.add("hidden");
+                renderPendingDecisionPanel(ev, recipients);
             } else {
                 decidedBanner.classList.add("hidden");
+                pendingPanel.classList.add("hidden");
             }
 
-            document.getElementById("detail-status").innerHTML = ev.is_closed
-                ? `<span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs">締め切り済み</span>`
-                : `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">受付中</span>`;
+            let statusHtml;
+            if (!ev.is_closed) {
+                statusHtml = `<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">受付中</span>`;
+            } else if (!ev.decided_slot_id) {
+                statusHtml = `<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs">回答完了・決定待ち</span>`;
+            } else {
+                statusHtml = `<span class="bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-xs">決定済み</span>`;
+            }
+            document.getElementById("detail-status").innerHTML = statusHtml;
             document.getElementById("detail-recipients-info").textContent =
                 ev.visibility === "specific" ? `対象: ${recipients.length}名` : "対象: 全員";
 
@@ -488,7 +529,7 @@
             document.getElementById("detail-edit-btn").classList.toggle("hidden", !isCreator || ev.is_closed);
             document.getElementById("detail-delete-btn").classList.toggle("hidden", !isCreator);
             document.getElementById("detail-close-btn-admin").classList.toggle("hidden", !isCreator || ev.is_closed);
-            document.getElementById("detail-announce-btn").classList.toggle("hidden", !isCreator || !ev.is_closed);
+            document.getElementById("detail-announce-btn").classList.toggle("hidden", !isCreator || !ev.is_closed || !ev.decided_slot_id);
 
             renderMatrix();
             renderMyResponseForm(ev.is_closed);
@@ -579,7 +620,10 @@
                 form.insertBefore(noticeEl, form.firstChild);
             }
             if (editCurrentEvent && editCurrentEvent.auto_close) {
-                noticeEl.innerHTML = '<i class="fas fa-clock mr-1"></i>全員が回答次第、早く締め切る場合があります。';
+                const uniNote = editCurrentEvent.require_unanimous
+                    ? " 全員が同じ日に○を付けた場合のみ自動的に決定されます。"
+                    : "";
+                noticeEl.innerHTML = `<i class="fas fa-clock mr-1"></i>全員が回答次第、早く締め切る場合があります。${uniNote}`;
                 noticeEl.classList.remove("hidden");
             } else {
                 noticeEl.classList.add("hidden");
@@ -642,23 +686,124 @@
             await checkAutoClose();
         });
 
+        // 対象者メールリストを取得（visibility='specific' なら指定メンバー、'all' なら全メンバー）
+        async function computeTargetEmails(ev) {
+            if (ev.visibility === "specific") {
+                const { data: recips } = await dbClient.from("schedule_recipients")
+                    .select("member_email").eq("event_id", ev.id);
+                return (recips || []).map(r => r.member_email);
+            }
+            return allMembers.map(m => m.email);
+        }
+
+        // 決定ロジック: 全員一致必須なら「全員○」の候補のみが対象、そうでなければ○最多の候補が対象。
+        // 対象候補が複数（同率タイ）の場合は最も早い日程を採用する。
+        function computeDecision(slots, responses, targetEmails, requireUnanimous) {
+            const totalTargets = targetEmails.length;
+            const circleCounts = {};
+            slots.forEach(s => { circleCounts[s.id] = 0; });
+            responses.forEach(r => {
+                if (r.response === "circle" && circleCounts[r.slot_id] !== undefined) circleCounts[r.slot_id]++;
+            });
+
+            let candidates;
+            if (requireUnanimous) {
+                candidates = slots.filter(s => circleCounts[s.id] === totalTargets);
+                if (candidates.length === 0) return { decidedSlot: null, tieBroken: false, circleCounts };
+            } else {
+                const maxCount = Math.max(0, ...slots.map(s => circleCounts[s.id]));
+                candidates = slots.filter(s => circleCounts[s.id] === maxCount);
+            }
+
+            candidates = [...candidates].sort((a, b) => {
+                const da = `${a.slot_date}T${a.slot_start || "00:00:00"}`;
+                const db = `${b.slot_date}T${b.slot_start || "00:00:00"}`;
+                return da < db ? -1 : da > db ? 1 : 0;
+            });
+
+            return { decidedSlot: candidates[0] || null, tieBroken: candidates.length > 1, circleCounts };
+        }
+
+        // 決定メール送信（自動決定・手動決定 共通）
+        async function sendDecisionMail(ev, decidedSlot, targetEmails, actorEmail, decidedByName, tieBroken) {
+            const decidedLabel = formatSlotLabel(decidedSlot);
+            const portalUrl = (window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "";
+            const scheduleUrl = `${portalUrl}/schedule.html?id=${ev.id}`;
+            const tieNote = tieBroken ? "\n（候補日が並んだため、最も早い候補日を決定日程としました。）" : "";
+
+            const notifyEmails = targetEmails.filter(e => e !== actorEmail);
+            if (notifyEmails.length > 0) {
+                const body = `日程調整「${ev.title}」の日程が決定しました。\n\n決定日程: ${decidedLabel}\n決定者: ${decidedByName}${tieNote}\n\n詳細はこちら: ${scheduleUrl}`;
+                try {
+                    await dbClient.functions.invoke("mail-notice-send", {
+                        body: { toEmails: notifyEmails, subject: `【日程決定】${ev.title}`, body, senderName: decidedByName }
+                    });
+                } catch (e) { console.warn("決定メール送信失敗:", e); }
+            }
+
+            if (ev.created_by_email && ev.created_by_email !== actorEmail) {
+                const announceParams = new URLSearchParams({
+                    from_schedule: "1",
+                    schedule_event_id: String(ev.id),
+                    title: `【日程決定】${ev.title}`,
+                    remarks: `日程調整「${ev.title}」の決定日程です。`,
+                    visibility: ev.visibility || "all"
+                });
+                announceParams.set("notice_date", decidedSlot.slot_date);
+                if (decidedSlot.slot_start) {
+                    announceParams.set("start_h", String(decidedSlot.slot_start).slice(0, 2));
+                    announceParams.set("start_m", String(decidedSlot.slot_start).slice(3, 5));
+                }
+                if (decidedSlot.slot_end) {
+                    announceParams.set("end_h", String(decidedSlot.slot_end).slice(0, 2));
+                    announceParams.set("end_m", String(decidedSlot.slot_end).slice(3, 5));
+                }
+                const announceUrl = `${portalUrl}/announcement-register.html?${announceParams.toString()}`;
+                const creatorBody = `日程調整「${ev.title}」の日程が決定しました（決定者: ${decidedByName}）。\n\n決定日程: ${decidedLabel}\n\n対象メンバーへの周知のため、お知らせを作成してください:\n${announceUrl}`;
+                try {
+                    await dbClient.functions.invoke("mail-notice-send", {
+                        body: { toEmails: [ev.created_by_email], subject: `【要対応】全員回答完了 - ${ev.title}`, body: creatorBody, senderName: "日程調整システム" }
+                    });
+                } catch (e) { console.warn("作成者メール送信失敗:", e); }
+            }
+
+            return decidedLabel;
+        }
+
+        // 完了メール送信（自動決定に至らなかった場合。対象者へは完了のみ、作成者へは手動決定を促す）
+        async function sendCompletionMail(ev, targetEmails, actorEmail, reasonText) {
+            const portalUrl = (window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "";
+            const scheduleUrl = `${portalUrl}/schedule.html?id=${ev.id}`;
+
+            const notifyEmails = targetEmails.filter(e => e !== actorEmail);
+            if (notifyEmails.length > 0) {
+                const body = `日程調整「${ev.title}」に全員が回答し、受付を終了しました。\n\n${reasonText}決定日程はまだ確定していません。対象者はこの画面から日程を決定できます。\n\n詳細はこちら: ${scheduleUrl}`;
+                try {
+                    await dbClient.functions.invoke("mail-notice-send", {
+                        body: { toEmails: notifyEmails, subject: `【回答完了】${ev.title}`, body, senderName: ev.created_by_name || ev.created_by_email }
+                    });
+                } catch (e) { console.warn("完了メール送信失敗:", e); }
+            }
+
+            if (ev.created_by_email) {
+                const body2 = `日程調整「${ev.title}」に全員が回答し、受付を終了しました。\n\n${reasonText}自動的には決定されなかったため、対象者のどなたかが手動で日程を決定してください。\n${scheduleUrl}`;
+                try {
+                    await dbClient.functions.invoke("mail-notice-send", {
+                        body: { toEmails: [ev.created_by_email], subject: `【要対応】日程の決定が必要です - ${ev.title}`, body: body2, senderName: "日程調整システム" }
+                    });
+                } catch (e) { console.warn("作成者メール送信失敗:", e); }
+            }
+        }
+
         async function checkAutoClose() {
             if (!currentEventId) return;
             // 最新のイベント情報を取得
             const { data: ev } = await dbClient.from("schedule_events")
-                .select("auto_close,is_closed,visibility,title,created_by_name,created_by_email")
+                .select("id,title,auto_close,require_unanimous,is_closed,visibility,created_by_name,created_by_email")
                 .eq("id", currentEventId).single();
             if (!ev || !ev.auto_close || ev.is_closed) return;
 
-            // 対象者メールリストを取得
-            let targetEmails = [];
-            if (ev.visibility === "specific") {
-                const { data: recips } = await dbClient.from("schedule_recipients")
-                    .select("member_email").eq("event_id", currentEventId);
-                targetEmails = (recips || []).map(r => r.member_email);
-            } else {
-                targetEmails = allMembers.map(m => m.email);
-            }
+            const targetEmails = await computeTargetEmails(ev);
             if (targetEmails.length === 0) return;
 
             // 全員が全スロットに回答しているか確認
@@ -675,70 +820,80 @@
             );
             if (!allAnswered) return;
 
-            // 最も○が多いスロットを決定
-            const circleCounts = {};
-            slotIds.forEach(sid => { circleCounts[sid] = 0; });
-            (responses || []).forEach(r => {
-                if (r.response === "circle" && circleCounts[r.slot_id] !== undefined)
-                    circleCounts[r.slot_id]++;
-            });
-            const decidedSlotId = slotIds.reduce((best, sid) =>
-                circleCounts[sid] > (circleCounts[best] || 0) ? sid : best, slotIds[0]);
+            const { decidedSlot, tieBroken } = computeDecision(currentSlots, responses || [], targetEmails, !!ev.require_unanimous);
 
-            // 締め切り + 決定日程を保存
-            await dbClient.from("schedule_events")
-                .update({ is_closed: true, decided_slot_id: decidedSlotId, updated_at: new Date().toISOString() })
-                .eq("id", currentEventId);
+            if (decidedSlot) {
+                const { error } = await dbClient.from("schedule_events")
+                    .update({
+                        is_closed: true,
+                        decided_slot_id: decidedSlot.id,
+                        decided_by_email: null,
+                        decided_by_name: "自動決定",
+                        decided_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq("id", currentEventId);
+                if (error) { console.warn("自動決定の保存失敗:", error); return; }
 
-            // 完了通知メール送信
-            const decidedSlot = currentSlots.find(s => s.id === decidedSlotId);
-            const decidedLabel = decidedSlot ? formatSlotLabel(decidedSlot) : "";
-            const portalUrl = (window.AUTH_CONFIG && window.AUTH_CONFIG.portalBaseUrl) || "";
-            const scheduleUrl = `${portalUrl}/schedule.html?id=${currentEventId}`;
-            // 対象者（自分以外）への完了通知
-            const notifyEmails = targetEmails.filter(e => e !== currentUser.email);
-            if (notifyEmails.length > 0 && decidedLabel) {
-                const body = `日程調整「${ev.title}」に全員が回答したため自動的に締め切られました。\n\n決定日程: ${decidedLabel}\n\n詳細はこちら: ${scheduleUrl}`;
-                try {
-                    await dbClient.functions.invoke("mail-notice-send", {
-                        body: { toEmails: notifyEmails, subject: `【日程決定】${ev.title}`, body, senderName: ev.created_by_name || ev.created_by_email }
-                    });
-                } catch (e) { console.warn("完了メール送信失敗:", e); }
+                const decidedLabel = await sendDecisionMail(ev, decidedSlot, targetEmails, currentUser.email, "自動決定", tieBroken);
+                await openEventDetail(currentEventId);
+                showResponseMsg(`全員が回答しました。決定日程: ${decidedLabel}`, false);
+            } else {
+                await dbClient.from("schedule_events")
+                    .update({ is_closed: true, updated_at: new Date().toISOString() })
+                    .eq("id", currentEventId);
+
+                await sendCompletionMail(ev, targetEmails, currentUser.email, "全員一致の候補日がなかったため、");
+                await openEventDetail(currentEventId);
+                showResponseMsg("全員が回答しました。全員一致の候補日がなかったため、決定日程は未定です。", false);
             }
-
-            // 作成者への「お知らせ作成」依頼メール
-            if (ev.created_by_email && decidedLabel) {
-                const announceParams = new URLSearchParams({
-                    from_schedule: "1",
-                    schedule_event_id: String(currentEventId),
-                    title: `【日程決定】${ev.title}`,
-                    remarks: `日程調整「${ev.title}」の決定日程です。`,
-                    visibility: ev.visibility || "all"
-                });
-                if (decidedSlot) {
-                    announceParams.set("notice_date", decidedSlot.slot_date);
-                    if (decidedSlot.slot_start) {
-                        announceParams.set("start_h", String(decidedSlot.slot_start).slice(0, 2));
-                        announceParams.set("start_m", String(decidedSlot.slot_start).slice(3, 5));
-                    }
-                    if (decidedSlot.slot_end) {
-                        announceParams.set("end_h", String(decidedSlot.slot_end).slice(0, 2));
-                        announceParams.set("end_m", String(decidedSlot.slot_end).slice(3, 5));
-                    }
-                }
-                const announceUrl = `${portalUrl}/announcement-register.html?${announceParams.toString()}`;
-                const creatorBody = `日程調整「${ev.title}」に全員が回答し、自動的に締め切られました。\n\n決定日程: ${decidedLabel}\n\n対象メンバーへの周知のため、お知らせを作成してください:\n${announceUrl}`;
-                try {
-                    await dbClient.functions.invoke("mail-notice-send", {
-                        body: { toEmails: [ev.created_by_email], subject: `【要対応】全員回答完了 - ${ev.title}`, body: creatorBody, senderName: "日程調整システム" }
-                    });
-                } catch (e) { console.warn("作成者メール送信失敗:", e); }
-            }
-
-            // 画面を更新
-            await openEventDetail(currentEventId);
-            showResponseMsg(`全員が回答しました。決定日程: ${decidedLabel}`, false);
         }
+
+        // 回答完了・決定日程未定パネルの描画（手動決定UI）
+        async function renderPendingDecisionPanel(ev, recipients) {
+            const panel = document.getElementById("pending-decision-panel");
+            const reasonEl = document.getElementById("pending-decision-reason");
+            const controls = document.getElementById("pending-decision-controls");
+            reasonEl.textContent = ev.require_unanimous
+                ? "全員一致の候補日がなかったため、自動的には決定されませんでした。"
+                : "全員の回答が完了しました。対象者がこの画面から日程を決定できます。";
+            panel.classList.remove("hidden");
+
+            const isCreator = ev.created_by_email === currentUser.email;
+            const isTarget = ev.visibility === "specific" ? recipients.includes(currentUser.email) : true;
+            if (!isCreator && !isTarget) { controls.classList.add("hidden"); return; }
+            controls.classList.remove("hidden");
+
+            const select = document.getElementById("pending-decision-select");
+            select.innerHTML = currentSlots.map(s => `<option value="${s.id}">${escapeHtml(formatSlotLabel(s))}</option>`).join("");
+        }
+
+        document.getElementById("pending-decision-btn").addEventListener("click", async () => {
+            const ev = editCurrentEvent;
+            if (!ev || !currentEventId) return;
+            const slotId = Number(document.getElementById("pending-decision-select").value);
+            const decidedSlot = currentSlots.find(s => s.id === slotId);
+            if (!decidedSlot) return;
+            if (!confirm(`この日程「${formatSlotLabel(decidedSlot)}」に決定し、対象者へ決定メールを送信します。よろしいですか？`)) return;
+
+            const decidedByName = currentUser.name || currentUser.email;
+            const { error } = await dbClient.from("schedule_events")
+                .update({
+                    is_closed: true,
+                    decided_slot_id: decidedSlot.id,
+                    decided_by_email: currentUser.email,
+                    decided_by_name: decidedByName,
+                    decided_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq("id", currentEventId);
+            if (error) { alert("決定に失敗しました: " + error.message); return; }
+
+            const targetEmails = await computeTargetEmails(ev);
+            await sendDecisionMail(ev, decidedSlot, targetEmails, currentUser.email, decidedByName, false);
+            await openEventDetail(currentEventId);
+            showResponseMsg(`日程を決定しました。決定日程: ${formatSlotLabel(decidedSlot)}`, false);
+        });
 
         function showResponseMsg(text, isError) {
             const el = document.getElementById("response-message");
@@ -854,6 +1009,8 @@
             document.getElementById("edit-description").value = ev.description || "";
             document.getElementById("edit-deadline").value = ev.deadline || "";
             document.getElementById("edit-auto-close").checked = !!ev.auto_close;
+            document.getElementById("edit-require-unanimous").checked = !!ev.require_unanimous;
+            document.getElementById("edit-require-unanimous").disabled = !ev.auto_close;
             document.getElementById("edit-message").classList.add("hidden");
 
             // visibility
@@ -902,6 +1059,12 @@
             makeSlotRow("edit-slot-inputs", null, "", "", "", "", "");
         });
 
+        document.getElementById("edit-auto-close").addEventListener("change", (e) => {
+            const uniCb = document.getElementById("edit-require-unanimous");
+            uniCb.disabled = !e.target.checked;
+            if (!e.target.checked) uniCb.checked = false;
+        });
+
         function closeEditModal() { document.getElementById("edit-modal").classList.add("hidden"); }
         document.getElementById("edit-modal-close").addEventListener("click", closeEditModal);
         document.getElementById("edit-cancel-btn").addEventListener("click", closeEditModal);
@@ -916,6 +1079,7 @@
             const description = document.getElementById("edit-description").value.trim();
             const deadline = document.getElementById("edit-deadline").value || null;
             const autoClose = document.getElementById("edit-auto-close").checked;
+            const requireUnanimous = document.getElementById("edit-require-unanimous").checked;
             const visibility = document.querySelector('input[name="edit-visibility"]:checked').value;
             const msgEl = document.getElementById("edit-message");
 
@@ -946,7 +1110,7 @@
 
             // イベント更新
             const { error: evErr } = await dbClient.from("schedule_events")
-                .update({ title, description: description || null, deadline, visibility, auto_close: autoClose, updated_at: new Date().toISOString() })
+                .update({ title, description: description || null, deadline, visibility, auto_close: autoClose, require_unanimous: requireUnanimous, updated_at: new Date().toISOString() })
                 .eq("id", currentEventId);
             if (evErr) { msgEl.textContent = "更新失敗: " + evErr.message; msgEl.classList.remove("hidden"); return; }
 
@@ -1048,6 +1212,8 @@
             document.getElementById("create-members-section").classList.add("hidden");
             document.querySelector('input[name="create-visibility"][value="all"]').checked = true;
             document.getElementById("create-auto-close").checked = true;
+            document.getElementById("create-require-unanimous").checked = false;
+            document.getElementById("create-require-unanimous").disabled = false;
             slotCount = 0;
             addSlotInput(); addSlotInput(); addSlotInput();
             document.getElementById("create-modal").classList.remove("hidden");
@@ -1061,12 +1227,18 @@
         document.getElementById("create-modal").addEventListener("click", e => {
             if (e.target === document.getElementById("create-modal")) closeCreateModal();
         });
+        document.getElementById("create-auto-close").addEventListener("change", (e) => {
+            const uniCb = document.getElementById("create-require-unanimous");
+            uniCb.disabled = !e.target.checked;
+            if (!e.target.checked) uniCb.checked = false;
+        });
 
         document.getElementById("create-save-btn").addEventListener("click", async () => {
             const title = document.getElementById("create-title").value.trim();
             const description = document.getElementById("create-description").value.trim();
             const deadline = document.getElementById("create-deadline").value || null;
             const autoClose = document.getElementById("create-auto-close").checked;
+            const requireUnanimous = document.getElementById("create-require-unanimous").checked;
             const visibility = document.querySelector('input[name="create-visibility"]:checked').value;
             const msgEl = document.getElementById("create-message");
 
@@ -1099,7 +1271,7 @@
             }
 
             const { data: evData, error: evErr } = await dbClient.from("schedule_events")
-                .insert({ title, description: description || null, deadline, visibility, auto_close: autoClose, created_by_email: currentUser.email, created_by_name: currentUser.name || currentUser.email, is_closed: false })
+                .insert({ title, description: description || null, deadline, visibility, auto_close: autoClose, require_unanimous: requireUnanimous, created_by_email: currentUser.email, created_by_name: currentUser.name || currentUser.email, is_closed: false })
                 .select("id").single();
 
             if (evErr || !evData) { msgEl.textContent = "作成失敗: " + (evErr && evErr.message); msgEl.classList.remove("hidden"); return; }
