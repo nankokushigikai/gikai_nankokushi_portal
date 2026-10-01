@@ -1,24 +1,17 @@
 param(
     [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string]$BackupRoot = (Join-Path $env:USERPROFILE "Documents\gikai_portal_backups"),
-    [switch]$SkipDbExport,
     [switch]$SkipFullDbDump,
     [string]$SupabaseUrl = "",
-    [string]$SupabaseAnonKey = "",
     [string]$PgHost = "",
     [int]$PgPort = 5432,
     [string]$PgUser = "postgres",
     [string]$PgDatabase = "postgres",
-    [SecureString]$PgPassword = $null,
-    [string[]]$Tables = @(
-        "general_question_tracker",
-        "general_question_updates",
-        "meeting_settings",
-        "member_directory",
-        "document_notes",
-        "document_ink_notes"
-    )
+    [SecureString]$PgPassword = $null
 )
+
+# DBの保存は pg_dump による全体バックアップに一本化している。
+# (以前の anonキーによる表CSV書き出しは、anon 全開放ポリシーの削除に伴い 2026/10/1 に廃止)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -148,41 +141,12 @@ $authConfigPath = Join-Path $ProjectRoot "auth-config.js"
 if ([string]::IsNullOrWhiteSpace($SupabaseUrl)) {
     $SupabaseUrl = Get-AuthConfigValue -AuthConfigPath $authConfigPath -Name "supabaseUrl"
 }
-if ([string]::IsNullOrWhiteSpace($SupabaseAnonKey)) {
-    $SupabaseAnonKey = Get-AuthConfigValue -AuthConfigPath $authConfigPath -Name "supabaseAnonKey"
-}
 if ([string]::IsNullOrWhiteSpace($PgHost)) {
     $PgHost = Get-PgHostFromSupabaseUrl -Url $SupabaseUrl
 }
 
-$dbDir = Join-Path $targetDir "db_csv"
-$dbExportLog = @()
 $fullDumpLog = @()
 $fullDumpPath = Join-Path $targetDir "supabase_full.dump"
-
-if (-not $SkipDbExport) {
-    if ([string]::IsNullOrWhiteSpace($SupabaseUrl) -or [string]::IsNullOrWhiteSpace($SupabaseAnonKey)) {
-        $dbExportLog += "DB export skipped: Supabase credentials not found."
-    } else {
-        Initialize-Directory -Path $dbDir
-        $headers = @{
-            "apikey" = $SupabaseAnonKey
-            "Authorization" = "Bearer $SupabaseAnonKey"
-            "Accept" = "text/csv"
-        }
-
-        foreach ($table in $Tables) {
-            $uri = "$SupabaseUrl/rest/v1/${table}?select=*"
-            $outputPath = Join-Path $dbDir "$table.csv"
-            try {
-                Invoke-WebRequest -Method Get -Uri $uri -Headers $headers -OutFile $outputPath | Out-Null
-                $dbExportLog += "OK: $table"
-            } catch {
-                $dbExportLog += "FAILED: $table -> $($_.Exception.Message)"
-            }
-        }
-    }
-}
 
 if (-not $SkipFullDbDump) {
     $pgDumpPath = Find-PgDumpPath
@@ -254,7 +218,6 @@ $meta = [ordered]@{
     bundle_path = "not-created"
     full_dump_path = "not-created"
     head_commit = $headCommit
-    db_export = $dbExportLog
     full_dump = $fullDumpLog
 }
 
@@ -273,10 +236,6 @@ Write-Host "Target: $targetDir"
 Write-Host "Zip: $zipPath"
 if (Test-Path -LiteralPath $bundlePath) {
     Write-Host "Bundle: $bundlePath"
-}
-if ($dbExportLog.Count -gt 0) {
-    Write-Host "DB export summary:"
-    $dbExportLog | ForEach-Object { Write-Host " - $_" }
 }
 if ($fullDumpLog.Count -gt 0) {
     Write-Host "Full dump summary:"
