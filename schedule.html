@@ -1230,7 +1230,31 @@
             renderScheduleGroupList("create-group-list", "create-member-list", "create-member-cb");
         }
 
+        // 二重作成防止: 作成画面を開くたびに作成番号を発行し、処理中は再実行させない
+        let createRequestId = null;
+        let isCreating = false;
+
+        function newRequestId() {
+            if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+            const b = window.crypto.getRandomValues(new Uint8Array(16));
+            b[6] = (b[6] & 0x0f) | 0x40;
+            b[8] = (b[8] & 0x3f) | 0x80;
+            const h = Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+            return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+        }
+
+        function setCreateBusy(busy) {
+            const btn = document.getElementById("create-save-btn");
+            btn.disabled = busy;
+            btn.textContent = busy ? "作成中..." : "作成";
+            btn.classList.toggle("opacity-60", busy);
+            btn.classList.toggle("cursor-not-allowed", busy);
+        }
+
         function openCreateModal() {
+            createRequestId = newRequestId();
+            isCreating = false;
+            setCreateBusy(false);
             document.getElementById("create-title").value = "";
             document.getElementById("create-description").value = "";
             document.getElementById("create-deadline").value = "";
@@ -1246,7 +1270,10 @@
             document.getElementById("create-modal").classList.remove("hidden");
         }
 
-        function closeCreateModal() { document.getElementById("create-modal").classList.add("hidden"); }
+        function closeCreateModal() {
+            if (isCreating) return; // 作成処理中は閉じさせない(閉じて再度開くと新しい作成番号になるため)
+            document.getElementById("create-modal").classList.add("hidden");
+        }
 
         document.getElementById("new-event-btn").addEventListener("click", openCreateModal);
         document.getElementById("create-modal-close").addEventListener("click", closeCreateModal);
@@ -1261,6 +1288,24 @@
         });
 
         document.getElementById("create-save-btn").addEventListener("click", async () => {
+            if (isCreating) return;
+            isCreating = true;
+            setCreateBusy(true);
+            let createdId = null;
+            try {
+                createdId = await submitCreateEvent();
+            } finally {
+                isCreating = false;
+                if (createdId === null) setCreateBusy(false);
+            }
+            if (createdId !== null) {
+                closeCreateModal();
+                await openEventDetail(createdId);
+            }
+        });
+
+        // 成功時は作成(または既存)の id、入力エラー・失敗時は null を返す
+        async function submitCreateEvent() {
             const title = document.getElementById("create-title").value.trim();
             const description = document.getElementById("create-description").value.trim();
             const deadline = document.getElementById("create-deadline").value || null;
@@ -1269,7 +1314,7 @@
             const visibility = document.querySelector('input[name="create-visibility"]:checked').value;
             const msgEl = document.getElementById("create-message");
 
-            if (!title) { msgEl.textContent = "タイトルを入力してください。"; msgEl.classList.remove("hidden"); return; }
+            if (!title) { msgEl.textContent = "タイトルを入力してください。"; msgEl.classList.remove("hidden"); return null; }
 
             const slotRows = document.querySelectorAll("#slot-inputs .slot-row");
             const slots = [];
@@ -1289,28 +1334,43 @@
                 });
             }
 
-            if (slots.length === 0) { msgEl.textContent = "日程候補を1つ以上入力してください。"; msgEl.classList.remove("hidden"); return; }
+            if (slots.length === 0) { msgEl.textContent = "日程候補を1つ以上入力してください。"; msgEl.classList.remove("hidden"); return null; }
 
             let selectedEmails = [];
             if (visibility === "specific") {
                 document.querySelectorAll(".create-member-cb:checked").forEach(cb => selectedEmails.push(cb.value));
-                if (selectedEmails.length === 0) { msgEl.textContent = "対象メンバーを選択してください。"; msgEl.classList.remove("hidden"); return; }
+                if (selectedEmails.length === 0) { msgEl.textContent = "対象メンバーを選択してください。"; msgEl.classList.remove("hidden"); return null; }
             }
 
-            const { data: evData, error: evErr } = await dbClient.from("schedule_events")
-                .insert({ title, description: description || null, deadline, visibility, auto_close: autoClose, require_unanimous: requireUnanimous, created_by_email: currentUser.email, created_by_name: currentUser.name || currentUser.email, is_closed: false })
-                .select("id").single();
+            msgEl.classList.add("hidden");
 
-            if (evErr || !evData) { msgEl.textContent = "作成失敗: " + (evErr && evErr.message); msgEl.classList.remove("hidden"); return; }
+            // 本体・日程候補・対象者を1回の処理で登録(途中失敗は全部取り消し)。
+            // 同じ作成番号での再実行は新規作成されず、既存の id が返る。
+            const { data: result, error: rpcErr } = await dbClient.rpc("create_schedule_event", {
+                p_request_id: createRequestId,
+                p_title: title,
+                p_description: description || null,
+                p_deadline: deadline,
+                p_visibility: visibility,
+                p_auto_close: autoClose,
+                p_require_unanimous: requireUnanimous,
+                p_created_by_name: currentUser.name || currentUser.email,
+                p_slots: slots,
+                p_recipient_emails: visibility === "specific" ? selectedEmails : []
+            });
 
-            const { error: slotsErr } = await dbClient.from("schedule_slots")
-                .insert(slots.map(s => ({ ...s, event_id: evData.id })));
-            if (slotsErr) { msgEl.textContent = "日程候補の保存失敗: " + slotsErr.message; msgEl.classList.remove("hidden"); return; }
+            if (rpcErr || !result || !result.id) {
+                msgEl.textContent = "作成失敗: " + ((rpcErr && rpcErr.message) || "不明なエラー");
+                msgEl.classList.remove("hidden");
+                return null;
+            }
+            const evData = { id: result.id };
+
+            // 既に作成済み(二重送信)の場合は通知メールを再送しない
+            if (result.duplicate) return evData.id;
 
             let recipientEmails = [];
-            if (visibility === "specific" && selectedEmails.length > 0) {
-                await dbClient.from("schedule_recipients")
-                    .insert(selectedEmails.map(email => ({ event_id: evData.id, member_email: email })));
+            if (visibility === "specific") {
                 recipientEmails = selectedEmails;
             } else if (visibility === "all") {
                 recipientEmails = allMembers.map(m => m.email).filter(e => e !== currentUser.email);
@@ -1329,9 +1389,8 @@
                 } catch (e) { console.warn("メール送信失敗:", e); }
             }
 
-            closeCreateModal();
-            await openEventDetail(evData.id);
-        });
+            return evData.id;
+        }
 
         // ---- 初期化 ----
         portalAuth.init({
