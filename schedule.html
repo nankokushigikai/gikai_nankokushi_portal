@@ -546,11 +546,32 @@
                 return;
             }
 
+            // 回答者（メール → 回答時の氏名）
             const respondersMap = new Map();
             currentResponses.forEach(r => {
                 if (!respondersMap.has(r.member_email)) respondersMap.set(r.member_email, r.member_name || r.member_email);
             });
-            const responders = Array.from(respondersMap.entries());
+
+            // 対象者全員を議席番号順（allMembers の並び）で並べる
+            const memberMap = new Map(allMembers.map(m => [m.email, m]));
+            let targetEmails;
+            if (editCurrentEvent && editCurrentEvent.visibility === "specific") {
+                const recipSet = new Set(window._scheduleRecipients || []);
+                targetEmails = allMembers.map(m => m.email).filter(e => recipSet.has(e));
+                recipSet.forEach(e => { if (!memberMap.has(e)) targetEmails.push(e); });
+            } else {
+                targetEmails = allMembers.map(m => m.email);
+            }
+            const targetSet = new Set(targetEmails);
+
+            const displayName = email => (memberMap.get(email) && memberMap.get(email).full_name) || respondersMap.get(email) || email;
+            // 行: [email, 氏名, 回答済みか, 対象外か]
+            const rows = targetEmails.map(email => [email, displayName(email), respondersMap.has(email), false]);
+            // 対象外だが回答がある人は末尾に残す
+            respondersMap.forEach((name, email) => {
+                if (!targetSet.has(email)) rows.push([email, displayName(email), true, true]);
+            });
+            const answeredCount = targetEmails.filter(e => respondersMap.has(e)).length;
 
             const counts = {};
             currentSlots.forEach(s => { counts[s.id] = { circle: 0, triangle: 0, cross: 0 }; });
@@ -561,7 +582,8 @@
             const thClass = "px-3 py-2 text-xs font-semibold text-center whitespace-nowrap";
             const tdClass = "px-3 py-2 text-center text-sm";
 
-            let html = `<table class="w-full border-collapse text-sm">
+            let html = `<p class="text-sm text-gray-600 mb-2">回答 <span class="font-bold text-gray-800">${answeredCount}</span> / ${targetEmails.length}名</p>
+            <table class="w-full border-collapse text-sm">
                 <thead>
                     <tr class="border-b-2 border-gray-300">
                         <th class="${thClass} text-left text-gray-700 min-w-[100px]">氏名</th>
@@ -570,10 +592,15 @@
                 </thead>
                 <tbody>`;
 
-            responders.forEach(([email, name]) => {
+            rows.forEach(([email, name, answered, outside]) => {
                 const isMe = email === currentUser.email;
-                html += `<tr class="border-b border-gray-100 ${isMe ? "bg-indigo-50" : ""}">
-                    <td class="${tdClass} text-left font-semibold text-gray-700">${escapeHtml(name)}${isMe ? ` <span class='text-xs text-indigo-500'>（自分）</span>` : ""}</td>
+                const rowCls = isMe ? "bg-indigo-50" : (!answered ? "bg-gray-100" : "");
+                const nameCls = answered ? "text-gray-700" : "text-gray-400";
+                const tags = (isMe ? ` <span class='text-xs text-indigo-500'>（自分）</span>` : "")
+                    + (!answered ? ` <span class='text-xs text-gray-400 font-normal'>未回答</span>` : "")
+                    + (outside ? ` <span class='text-xs text-gray-400 font-normal'>(対象外)</span>` : "");
+                html += `<tr class="border-b border-gray-100 ${rowCls}">
+                    <td class="${tdClass} text-left font-semibold ${nameCls} whitespace-nowrap">${escapeHtml(name)}${tags}</td>
                     ${currentSlots.map(s => {
                         const resp = currentResponses.find(r => r.member_email === email && r.slot_id === s.id);
                         const val = resp ? resp.response : "none";
@@ -584,8 +611,8 @@
                 </tr>`;
             });
 
-            if (responders.length === 0) {
-                html += `<tr><td colspan="${currentSlots.length + 1}" class="${tdClass} text-gray-400">まだ回答がありません。</td></tr>`;
+            if (rows.length === 0) {
+                html += `<tr><td colspan="${currentSlots.length + 1}" class="${tdClass} text-gray-400">対象者がいません。</td></tr>`;
             }
 
             html += `<tr class="border-t-2 border-gray-300 bg-gray-50">
