@@ -793,6 +793,7 @@
                     const { data: calData, error: calError } = await dbClient.functions.invoke("announcement-calendar-sync", {
                         body: {
                             action: "upsert",
+                            announcementNo: announcementNo,
                             event: {
                                 summary: payload.title,
                                 description: descriptionLines.join("\n"),

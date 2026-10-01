@@ -12,6 +12,16 @@
 //   CALENDAR_CLIENT_SECRET (未設定なら GMAIL_CLIENT_SECRET を流用)
 //   CALENDAR_REFRESH_TOKEN (calendar スコープで取得したリフレッシュトークン。必須)
 //   CALENDAR_ID            (未設定なら "primary")
+//
+// 呼び出し元の認可:
+//   この関数はシステム用Googleアカウントの権限でカレンダーを直接操作するため、
+//   RLSを経由しない。呼び出し元のSupabase JWTを検証し、
+//   upsert/delete は 管理者(is_portal_admin) または そのお知らせの作成者本人のみ
+//     （作成者の場合は announcementNo 必須。eventId はそのお知らせの予定と一致すること。
+//       ゲストは現職の名簿メンバーに限る）
+//   respond はログイン済みユーザーが「自分の出欠」を反映する場合のみ（管理者は代理可）。
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.107.0";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -26,6 +36,7 @@ const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
 
 type CalendarSyncPayload = {
   action?: "upsert" | "delete" | "respond";
+  announcementNo?: number;
   eventId?: string;
   sendUpdates?: "all" | "none" | "externalOnly";
   event?: {
@@ -110,6 +121,88 @@ async function getCalendarAccessToken() {
   return data.access_token;
 }
 
+type AuthorizedCaller = {
+  email: string;
+  isAdmin: boolean;
+  // deno-lint-ignore no-explicit-any
+  client: any;
+};
+
+async function getAuthorizedCaller(req: Request): Promise<AuthorizedCaller | null> {
+  const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) {
+    return null;
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } }
+  });
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  if (userError || !userData?.user) {
+    return null;
+  }
+
+  const { data: isAdminData, error: adminError } = await supabase.rpc("is_portal_admin");
+  if (adminError) {
+    return null;
+  }
+
+  return {
+    email: String(userData.user.email || "").trim().toLowerCase(),
+    isAdmin: Boolean(isAdminData),
+    client: supabase
+  };
+}
+
+// 管理者以外が upsert/delete する場合: 呼び出し者がそのお知らせの作成者本人であること。
+// お知らせは呼び出し者のJWT（RLS適用）で読むので、見えないお知らせは操作できない。
+async function verifyAnnouncementOwner(
+  caller: AuthorizedCaller,
+  announcementNo: number,
+  eventId: string
+): Promise<string | null> {
+  if (!Number.isInteger(announcementNo) || announcementNo <= 0) {
+    return "announcementNo が必要です。";
+  }
+  const { data, error } = await caller.client
+    .from("announcements")
+    .select("no,created_by_email,google_calendar_event_id")
+    .eq("no", announcementNo)
+    .maybeSingle();
+  if (error || !data) {
+    return "対象のお知らせが見つかりません。";
+  }
+  const ownerEmail = String(data.created_by_email || "").trim().toLowerCase();
+  if (!ownerEmail || ownerEmail !== caller.email) {
+    return "このお知らせの作成者または管理者のみ操作できます。";
+  }
+  const linkedEventId = String(data.google_calendar_event_id || "").trim();
+  if (eventId && eventId !== linkedEventId) {
+    return "指定された予定はこのお知らせのものではありません。";
+  }
+  return null;
+}
+
+// 管理者以外が招待できるゲストは現職の名簿メンバーに限る
+async function filterCurrentMembers(caller: AuthorizedCaller, emails: string[]): Promise<string[]> {
+  if (emails.length === 0) return [];
+  const { data, error } = await caller.client
+    .from("member_directory")
+    .select("email")
+    .eq("is_current", true);
+  if (error || !Array.isArray(data)) return [];
+  const memberSet = new Set(data.map((row: { email?: string }) => String(row.email || "").trim().toLowerCase()));
+  return emails.filter((email) => memberSet.has(email));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: CORS_HEADERS });
@@ -126,11 +219,28 @@ Deno.serve(async (req) => {
   }
 
   const action = payload.action === "delete" ? "delete" : payload.action === "respond" ? "respond" : "upsert";
+
+  const caller = await getAuthorizedCaller(req);
+  if (!caller) {
+    return jsonResponse(401, { ok: false, error: "認証が必要です。ログインし直してください。" });
+  }
+  const eventId = String(payload.eventId || "").trim();
+  if ((action === "upsert" || action === "delete") && !caller.isAdmin) {
+    const ownerError = await verifyAnnouncementOwner(caller, Number(payload.announcementNo), eventId);
+    if (ownerError) {
+      return jsonResponse(403, { ok: false, error: ownerError });
+    }
+  }
+  if (action === "respond" && !caller.isAdmin) {
+    const requested = String(payload.attendeeEmail || "").trim().toLowerCase();
+    if (!caller.email || requested !== caller.email) {
+      return jsonResponse(403, { ok: false, error: "自分の出欠のみ反映できます。" });
+    }
+  }
   const calendarId = Deno.env.get("CALENDAR_ID") || "primary";
   const sendUpdates = payload.sendUpdates === "none" || payload.sendUpdates === "externalOnly"
     ? payload.sendUpdates
     : action === "respond" ? "none" : "all";
-  const eventId = String(payload.eventId || "").trim();
 
   const encodedCalendarId = encodeURIComponent(calendarId);
 
@@ -215,7 +325,8 @@ Deno.serve(async (req) => {
   const location = clampText(ev.location).trim();
   const startDateTime = String(ev.startDateTime || "").trim();
   const endDateTime = String(ev.endDateTime || "").trim();
-  const attendees = sanitizeEmails(ev.attendees);
+  const sanitizedAttendees = sanitizeEmails(ev.attendees);
+  const attendees = caller.isAdmin ? sanitizedAttendees : await filterCurrentMembers(caller, sanitizedAttendees);
   const reminders = sanitizeReminders(ev.reminderMinutes);
 
   if (!RFC3339_PATTERN.test(startDateTime) || !RFC3339_PATTERN.test(endDateTime)) {
