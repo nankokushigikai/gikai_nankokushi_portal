@@ -9,6 +9,20 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        /* 未回答ボタンの赤点滅（約1.2秒周期。光過敏への配慮で毎秒3回未満） */
+        @keyframes unanswered-blink {
+            0%, 100% { background-color: #dc2626; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6); }
+            50% { background-color: #f87171; box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+        }
+        .unanswered-blink {
+            background-color: #dc2626;
+            animation: unanswered-blink 1.2s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .unanswered-blink { animation: none; }
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
 
@@ -32,8 +46,18 @@
                 <div id="today-date" class="text-sm font-semibold text-gray-500">--/--(--)</div>
             </div>
 
+            <!-- 未回答の点滅ボタン（未回答があるものだけ表示） -->
+            <div id="unanswered-alert-bar" class="mt-4 flex flex-wrap gap-3 hidden">
+                <button id="announcement-unanswered-btn" type="button" class="unanswered-blink hidden inline-flex items-center gap-2 text-white font-bold text-sm px-4 py-2 rounded-lg shadow">
+                    <i class="fas fa-bell"></i><span>お知らせ 未回答 <span id="announcement-unanswered-count">0</span>件</span>
+                </button>
+                <button id="schedule-unanswered-btn" type="button" class="unanswered-blink hidden inline-flex items-center gap-2 text-white font-bold text-sm px-4 py-2 rounded-lg shadow">
+                    <i class="fas fa-calendar-check"></i><span>日程調整 未回答 <span id="schedule-unanswered-count">0</span>件</span>
+                </button>
+            </div>
+
             <!-- お知らせタイル -->
-            <div class="mt-5 bg-white p-5 rounded-xl shadow-sm border-l-4 border-rose-500">
+            <div id="announcement-tile-section" class="mt-5 bg-white p-5 rounded-xl shadow-sm border-l-4 border-rose-500">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
                     <div class="flex items-center gap-2">
                         <div class="text-rose-500 text-xl"><i class="fas fa-bullhorn"></i></div>
@@ -994,6 +1018,7 @@
             items.forEach((item, index) => {
                 const li = document.createElement("li");
                 li.className = "text-gray-700 bg-gray-50 rounded-lg p-2 cursor-pointer hover:bg-rose-50 transition";
+                li.dataset.announcementNo = String(item.no);
 
                 li.addEventListener("click", (e) => {
                     if (e.target.closest("button")) return;
@@ -1210,12 +1235,113 @@
             }
         });
 
+        // ===== 未回答の点滅ボタン =====
+        let myUnansweredAnnouncementNos = [];
+        let myUnansweredScheduleIds = [];
+
+        function refreshUnansweredAlertBar() {
+            const bar = document.getElementById("unanswered-alert-bar");
+            const annBtn = document.getElementById("announcement-unanswered-btn");
+            const schBtn = document.getElementById("schedule-unanswered-btn");
+            document.getElementById("announcement-unanswered-count").textContent = String(myUnansweredAnnouncementNos.length);
+            document.getElementById("schedule-unanswered-count").textContent = String(myUnansweredScheduleIds.length);
+            annBtn.classList.toggle("hidden", myUnansweredAnnouncementNos.length === 0);
+            schBtn.classList.toggle("hidden", myUnansweredScheduleIds.length === 0);
+            bar.classList.toggle("hidden", myUnansweredAnnouncementNos.length === 0 && myUnansweredScheduleIds.length === 0);
+        }
+
+        // 開催前（今日なら終了時刻前）のお知らせか
+        function isAnnouncementUpcoming(item) {
+            const today = getTodayDateString();
+            const d = String(item.notice_date || "");
+            if (d > today) return true;
+            if (d < today) return false;
+            const endTime = String(item.end_time || "").slice(0, 5);
+            return !endTime || endTime > new Date().toTimeString().slice(0, 5);
+        }
+
+        // 自分が対象者で未回答のお知らせ（出欠確認あり・取消なし・開催前・回答期限内）
+        async function loadMyUnansweredAnnouncements(client, normalizedUserEmail) {
+            if (!client || !normalizedUserEmail) return [];
+            const now = Date.now();
+            const candidates = (allAnnouncementRows || []).filter((item) => {
+                if (!item.attendance_required) return false;
+                if (String(item.lifecycle_status || "active") === "canceled") return false;
+                if (!isAnnouncementUpcoming(item)) return false;
+                if (item.attendance_deadline) {
+                    const deadline = new Date(item.attendance_deadline).getTime();
+                    if (Number.isFinite(deadline) && deadline < now) return false;
+                }
+                return item.visibility === "all" || item.visibility === "specific";
+            });
+            if (candidates.length === 0) return [];
+
+            const nos = candidates.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
+            const specificNos = candidates.filter((item) => item.visibility === "specific").map((item) => Number(item.no));
+
+            const [recipientRes, responseRes] = await Promise.all([
+                specificNos.length > 0
+                    ? client.from("announcement_recipients").select("announcement_no,recipient_email").in("announcement_no", specificNos)
+                    : Promise.resolve({ data: [], error: null }),
+                client.from("announcement_attendance_responses").select("announcement_no,responder_email").in("announcement_no", nos)
+            ]);
+            if (recipientRes.error || responseRes.error) {
+                console.error("未回答お知らせの判定エラー:", recipientRes.error || responseRes.error);
+                return [];
+            }
+
+            const myRecipientNos = new Set((recipientRes.data || [])
+                .filter((row) => normalizeEmail(row.recipient_email) === normalizedUserEmail)
+                .map((row) => Number(row.announcement_no)));
+            const myAnsweredNos = new Set((responseRes.data || [])
+                .filter((row) => normalizeEmail(row.responder_email) === normalizedUserEmail)
+                .map((row) => Number(row.announcement_no)));
+
+            return candidates.filter((item) => {
+                const no = Number(item.no);
+                if (myAnsweredNos.has(no)) return false;
+                return item.visibility === "all" || myRecipientNos.has(no);
+            });
+        }
+
+        function flashHighlight(el) {
+            if (!el) return;
+            el.classList.add("ring-4", "ring-red-400");
+            setTimeout(() => el.classList.remove("ring-4", "ring-red-400"), 3000);
+        }
+
+        document.getElementById("announcement-unanswered-btn").addEventListener("click", () => {
+            const section = document.getElementById("announcement-tile-section");
+            if (myUnansweredAnnouncementNos.length === 1) {
+                const li = document.querySelector(`#announcement-tile-list li[data-announcement-no="${Number(myUnansweredAnnouncementNos[0])}"]`);
+                if (li) {
+                    li.scrollIntoView({ behavior: "smooth", block: "center" });
+                    flashHighlight(li);
+                    return;
+                }
+            }
+            section.scrollIntoView({ behavior: "smooth", block: "start" });
+            flashHighlight(section);
+        });
+
+        document.getElementById("schedule-unanswered-btn").addEventListener("click", () => {
+            if (myUnansweredScheduleIds.length === 1) {
+                window.location.href = `schedule.html?id=${encodeURIComponent(String(Number(myUnansweredScheduleIds[0])))}`;
+                return;
+            }
+            const section = document.getElementById("schedule-pending-section");
+            section.scrollIntoView({ behavior: "smooth", block: "start" });
+            flashHighlight(section);
+        });
+
         async function loadAnnouncements(client, userEmail, userRole, responderName) {
             if (!client) {
                 allAnnouncementRows = [];
                 updateCanceledToggleLabel();
                 updateAnnouncementCountLink();
                 renderAnnouncements([]);
+                myUnansweredAnnouncementNos = [];
+                refreshUnansweredAlertBar();
                 return;
             }
 
@@ -1234,6 +1360,8 @@
                 updateAnnouncementCountLink();
                 renderAnnouncements([]);
                 setAnnouncementTileMessage("お知らせの読込に失敗しました。", true);
+                myUnansweredAnnouncementNos = [];
+                refreshUnansweredAlertBar();
                 return;
             }
 
@@ -1257,6 +1385,18 @@
             const normalizedUserEmail = normalizeEmail(userEmail);
             const responseByNo = new Map();
             const tileRows = rows.slice(0, 5);
+
+            // 未回答のお知らせは6件目以降でもタイルに追加表示し、点滅ボタンを更新
+            const unansweredRows = await loadMyUnansweredAnnouncements(client, normalizedUserEmail);
+            myUnansweredAnnouncementNos = unansweredRows.map((item) => Number(item.no));
+            refreshUnansweredAlertBar();
+            const tileNoSet = new Set(tileRows.map((item) => Number(item.no)));
+            unansweredRows.forEach((item) => {
+                if (!tileNoSet.has(Number(item.no))) {
+                    tileRows.push(item);
+                    tileNoSet.add(Number(item.no));
+                }
+            });
             const announcementNos = tileRows.map((item) => Number(item.no)).filter((value) => Number.isFinite(value));
 
             const personalLinkByNo = new Map();
@@ -1361,12 +1501,15 @@
 
                 if (events.length === 0) return;
 
-                // 自分の回答済みイベントIDを取得
+                // 自分の回答済みイベントIDを取得（回答期限を過ぎたものは対象外）
                 const { data: myResp } = await client.from("schedule_responses")
                     .select("event_id").eq("member_email", userEmail);
                 const answeredIds = new Set((myResp || []).map(r => r.event_id));
 
-                const pending = events.filter(ev => !answeredIds.has(ev.id));
+                const today = getTodayDateString();
+                const pending = events.filter(ev => !answeredIds.has(ev.id) && (!ev.deadline || String(ev.deadline).slice(0, 10) >= today));
+                myUnansweredScheduleIds = pending.map(ev => Number(ev.id));
+                refreshUnansweredAlertBar();
                 if (pending.length === 0) return;
 
                 const section = document.getElementById("schedule-pending-section");
@@ -1375,14 +1518,14 @@
                 if (badge) { badge.textContent = `未回答 ${pending.length}件`; badge.classList.remove("hidden"); }
                 section.classList.remove("hidden");
                 list.innerHTML = pending.map(ev => {
-                    const deadline = ev.deadline ? ` <span class="text-xs text-gray-400">期限: ${ev.deadline}</span>` : "";
+                    const deadline = ev.deadline ? ` <span class="text-xs text-gray-400">期限: ${escapeHtml(ev.deadline)}</span>` : "";
                     return `<li class="flex items-center justify-between gap-2 py-1 border-b border-gray-100 last:border-0">
                         <span class="flex items-center gap-2">
                             <span class="text-xs bg-pink-100 text-pink-700 font-bold px-2 py-0.5 rounded-full">未回答</span>
-                            <span class="text-gray-800 font-semibold">${ev.title}</span>
+                            <span class="text-gray-800 font-semibold">${escapeHtml(ev.title)}</span>
                             ${deadline}
                         </span>
-                        <a href="schedule.html?id=${ev.id}" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-semibold whitespace-nowrap">回答する</a>
+                        <a href="schedule.html?id=${encodeURIComponent(String(Number(ev.id)))}" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-semibold whitespace-nowrap">回答する</a>
                     </li>`;
                 }).join("");
             } catch (_e) {
@@ -1432,14 +1575,14 @@
                         if (slot.slot_end)   { p.set("end_h",   String(slot.slot_end).slice(0,2));   p.set("end_m",   String(slot.slot_end).slice(3,5)); }
                     }
                     const announceUrl = `announcement-register.html?${p.toString()}`;
-                    return `<li class="flex items-center justify-between gap-2 py-2 border-b border-gray-100 last:border-0" data-action-event-id="${ev.id}">
+                    return `<li class="flex items-center justify-between gap-2 py-2 border-b border-gray-100 last:border-0" data-action-event-id="${escapeHtml(ev.id)}">
                         <span class="flex items-center gap-2 flex-1 min-w-0">
                             <span class="text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full whitespace-nowrap">要作成</span>
-                            <span class="text-gray-800 font-semibold text-sm">「${ev.title}」全員が回答しました。お知らせを作成してください。</span>
+                            <span class="text-gray-800 font-semibold text-sm">「${escapeHtml(ev.title)}」全員が回答しました。お知らせを作成してください。</span>
                         </span>
                         <div class="flex items-center gap-2 shrink-0">
                             <a href="${announceUrl}" class="text-xs bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg font-semibold whitespace-nowrap">お知らせを作成</a>
-                            <button class="dismiss-action-btn text-gray-300 hover:text-gray-500 text-base font-bold leading-none" data-event-id="${ev.id}" title="閉じる">×</button>
+                            <button class="dismiss-action-btn text-gray-300 hover:text-gray-500 text-base font-bold leading-none" data-event-id="${escapeHtml(ev.id)}" title="閉じる">×</button>
                         </div>
                     </li>`;
                 }).join("");
