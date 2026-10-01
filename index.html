@@ -309,18 +309,6 @@
             return String(a && a.full_name ? a.full_name : "").localeCompare(String(b && b.full_name ? b.full_name : ""), "ja");
         }
 
-        function getMembersWithEmail() {
-            const normalized = new Set();
-            const result = [];
-            allMembers.forEach((member) => {
-                const email = normalizeEmail(member.email);
-                if (!email || normalized.has(email)) return;
-                normalized.add(email);
-                result.push({ email, name: member.full_name || email });
-            });
-            return result;
-        }
-
         function buildAttendanceSelectLabel(item) {
             const dateText = formatAnnouncementDate(item.notice_date);
             const start = item.start_time ? String(item.start_time).slice(0, 5) : "--:--";
@@ -332,35 +320,27 @@
             return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${attendanceStatusBadgeClass(status)}">${escapeHtml(attendanceStatusLabel(status))}</span>`;
         }
 
+        // 対象者一覧と出欠回答はRPC経由で取得する（表のRLSは本人分のみのため、対象者全員分はDB関数側で権限判定して返す）
         async function getAttendanceTargets(item) {
             const client = announcementModalContext.client;
-            let targets = [];
-            if (item.visibility === "specific") {
-                const { data: recipients } = await client
-                    .from("announcement_recipients")
-                    .select("recipient_email,recipient_name")
-                    .eq("announcement_no", item.no);
-                targets = (recipients || []).map((row) => {
-                    const email = normalizeEmail(row.recipient_email);
-                    const member = allMembers.find((m) => normalizeEmail(m.email) === email) || null;
-                    return {
-                        email,
-                        name: row.recipient_name || member?.full_name || row.recipient_email,
-                        mobile: member?.mobile || "",
-                        sortSource: member || { full_name: row.recipient_name || row.recipient_email, category: "", seat_number: null }
-                    };
-                });
-            } else {
-                targets = getMembersWithEmail().map((target) => {
-                    const member = allMembers.find((m) => normalizeEmail(m.email) === target.email) || null;
-                    return {
-                        email: target.email,
-                        name: target.name,
-                        mobile: member?.mobile || "",
-                        sortSource: member || { full_name: target.name, category: "", seat_number: null }
-                    };
-                });
-            }
+            const { data, error } = await client.rpc("get_announcement_attendance_members", {
+                p_announcement_no: item.no
+            });
+            if (error) throw new Error("対象者一覧の取得に失敗しました: " + error.message);
+
+            const targets = (data || []).map((row) => {
+                const email = normalizeEmail(row.member_email);
+                const member = allMembers.find((m) => normalizeEmail(m.email) === email) || null;
+                const name = row.member_name || member?.full_name || row.member_email;
+                return {
+                    email,
+                    name,
+                    mobile: member?.mobile || "",
+                    status: row.attendance_status || "unanswered",
+                    respondedAt: row.attendance_responded_at || "",
+                    sortSource: member || { full_name: name, category: "", seat_number: null }
+                };
+            });
             const dedupMap = new Map();
             targets.forEach((target) => {
                 if (!target.email || dedupMap.has(target.email)) return;
@@ -378,7 +358,6 @@
         }
 
         async function loadAttendanceStatusMembers(announcementNo) {
-            const client = announcementModalContext.client;
             const titleEl = document.getElementById("attendance-status-modal-title");
             const summaryEl = document.getElementById("attendance-status-modal-summary");
             const tbody = document.getElementById("attendance-status-modal-list");
@@ -397,29 +376,13 @@
 
             try {
                 const targets = await getAttendanceTargets(item);
-                const { data: responses, error: responseError } = await client
-                    .from("announcement_attendance_responses")
-                    .select("responder_email,responder_name,status,responded_at")
-                    .eq("announcement_no", item.no);
 
-                if (responseError) throw new Error("回答の取得に失敗しました: " + responseError.message);
-
-                const responseByEmail = new Map();
-                (responses || []).forEach((row) => {
-                    const email = normalizeEmail(row.responder_email);
-                    if (!email) return;
-                    responseByEmail.set(email, row);
-                });
-
-                const rows = targets.map((target) => {
-                    const response = responseByEmail.get(target.email);
-                    return {
-                        name: target.name,
-                        mobile: target.mobile || "",
-                        status: response?.status || "unanswered",
-                        respondedAt: response?.responded_at || ""
-                    };
-                });
+                const rows = targets.map((target) => ({
+                    name: target.name,
+                    mobile: target.mobile || "",
+                    status: target.status,
+                    respondedAt: target.respondedAt
+                }));
 
                 const stats = rows.reduce((acc, row) => {
                     if (row.status === "attend") acc.attend += 1;
