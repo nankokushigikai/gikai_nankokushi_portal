@@ -159,6 +159,41 @@
                     </div>
                     <input type="hidden" id="attendance_deadline">
                 </div><!-- /amber box -->
+                <div class="md:col-span-2 rounded-lg border border-violet-200 bg-violet-50 p-4">
+                    <label class="text-sm font-semibold text-violet-800">開始前の通知（ホーム画面アイコンの印）</label>
+                    <p class="mt-1 text-xs text-violet-700">開始時間の前に、対象者のスマホへ通知を送り、ホーム画面アイコンに数字を付けます。2段階まで指定できます（「欠席」と回答した人には送りません）。</p>
+                    <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label for="push_remind_1" class="text-xs text-violet-700">1回目</label>
+                            <select id="push_remind_1" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="">通知しない</option>
+                                <option value="1">1分前</option>
+                                <option value="5">5分前</option>
+                                <option value="10">10分前</option>
+                                <option value="15">15分前</option>
+                                <option value="30">30分前</option>
+                                <option value="60" selected>1時間前</option>
+                                <option value="120">2時間前</option>
+                                <option value="1440">前日(24時間前)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="push_remind_2" class="text-xs text-violet-700">2回目</label>
+                            <select id="push_remind_2" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="">通知しない</option>
+                                <option value="1" selected>1分前</option>
+                                <option value="5">5分前</option>
+                                <option value="10">10分前</option>
+                                <option value="15">15分前</option>
+                                <option value="30">30分前</option>
+                                <option value="60">1時間前</option>
+                                <option value="120">2時間前</option>
+                                <option value="1440">前日(24時間前)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-violet-700">通知は端末側で「通知と印を有効にする」を押した人にだけ届きます。届くまで最大1分ほど遅れることがあります。</p>
+                </div>
                 <div class="md:col-span-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                     <p class="text-xs text-indigo-800">Googleカレンダー連携はお知らせ登録後に各自で実行します（登録時の連携は行いません）。</p>
                 </div>
@@ -667,6 +702,20 @@
             `).join("");
         }
 
+        // 開始前の通知（2段階）：選択値を数値(分)にし、1回目は2回目より前（大きい分数）でなければならない
+        function readPushRemindMinutes(firstId, secondId) {
+            const toMinutes = (id) => {
+                const raw = document.getElementById(id).value;
+                return raw === "" ? null : Number(raw);
+            };
+            const first = toMinutes(firstId);
+            const second = toMinutes(secondId);
+            if (first !== null && second !== null && first <= second) {
+                return { error: "開始前の通知は、1回目を2回目より前（長い時間）にしてください。" };
+            }
+            return { first, second };
+        }
+
         async function saveAnnouncement(event) {
             event.preventDefault();
 
@@ -710,6 +759,13 @@
                 updated_at: new Date().toISOString()
             };
             if (prefillScheduleEventId) payload.schedule_event_id = prefillScheduleEventId;
+            const pushRemind = readPushRemindMinutes("push_remind_1", "push_remind_2");
+            if (pushRemind.error) {
+                setAnnouncementMessage(pushRemind.error, true);
+                return;
+            }
+            payload.push_remind_minutes_1 = pushRemind.first;
+            payload.push_remind_minutes_2 = pushRemind.second;
 
             const missingFields = [];
             if (!payload.title) missingFields.push("タイトル");

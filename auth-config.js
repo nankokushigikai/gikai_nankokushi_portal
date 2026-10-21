@@ -14,6 +14,8 @@ window.AUTH_CONFIG = {
     // 例: "https://<project-ref>.functions.supabase.co/mail-notice-send"
     // 未設定時は mailto でメール作成画面を開きます。
     mailNoticeWebhookUrl: "https://gnnfzimhfizbfhvwuzbf.functions.supabase.co/mail-notice-send",
+    // お知らせの開始前通知(Push)用の公開鍵(VAPID公開鍵。秘密鍵は Edge Function の secrets のみ)
+    pushVapidPublicKey: "BNHfm1Dyrw8MR6g38ALx13DezPjP7eApsgmdWZAtOrd8ytV8JrfvJ3rFOiSafBSXuNE3-yQRiw9WppT74JSSfrE",
     // 政務活動費アプリの本番公開URL（末尾スラッシュ不要）。
     // 例: "https://seimu.example.com"
     seimukatudouhiAppBaseUrl: "",

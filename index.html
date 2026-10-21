@@ -1719,6 +1719,46 @@
         }
 
         // ホーム画面アイコンの印：トップを開いたら・アプリへ戻ったら消す。ホーム画面から開いている時だけ有効化の案内を出す
+        // 通知が許可されていてログイン済みなら、この端末を開始前通知(Push)の送り先として登録する
+        let pushRegisterClient = null;
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+            const raw = atob(base64);
+            return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+        }
+
+        async function syncPushSubscription() {
+            const client = pushRegisterClient;
+            const vapidKey = window.AUTH_CONFIG && window.AUTH_CONFIG.pushVapidPublicKey;
+            if (!client || !vapidKey || !window.AppBadge) return { ok: false, reason: "not-ready" };
+            if (!window.AppBadge.isStandalone() || window.AppBadge.notificationState() !== "granted") return { ok: false, reason: "not-allowed" };
+            try {
+                await window.AppBadge.registerServiceWorker();
+                const registration = await navigator.serviceWorker.ready;
+                if (!registration || !registration.pushManager) return { ok: false, reason: "unsupported" };
+                let subscription = await registration.pushManager.getSubscription();
+                if (!subscription) {
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(vapidKey)
+                    });
+                }
+                const json = subscription.toJSON();
+                const { error } = await client.rpc("register_push_subscription", {
+                    p_endpoint: json.endpoint,
+                    p_p256dh: json.keys && json.keys.p256dh,
+                    p_auth: json.keys && json.keys.auth,
+                    p_user_agent: String(navigator.userAgent || "").slice(0, 300)
+                });
+                if (error) return { ok: false, reason: error.message };
+                return { ok: true };
+            } catch (error) {
+                return { ok: false, reason: error && error.message ? error.message : "error" };
+            }
+        }
+
         (function setupAppBadge() {
             if (!window.AppBadge) return;
             const box = document.getElementById("app-badge-setup");
@@ -1745,6 +1785,12 @@
             enableBtn.addEventListener("click", async () => {
                 await window.AppBadge.requestPermission();
                 refreshSetupBox();
+                if (window.AppBadge.notificationState() === "granted") {
+                    const result = await syncPushSubscription();
+                    if (!result.ok && result.reason !== "not-ready") {
+                        desc.textContent = "通知は許可されましたが、開始前通知の登録に失敗しました。トップを開き直してください。";
+                    }
+                }
             });
             testBtn.addEventListener("click", async () => {
                 await window.AppBadge.setBadge(1);
@@ -1780,6 +1826,8 @@
                     || (context.profile && context.profile.display_name)
                     || userEmail;
                 announcementModalContext = { client: context.client, userEmail, userRole: context.role || "viewer", responderName };
+                pushRegisterClient = context.client;
+                syncPushSubscription();
                 await loadAnnouncements(context.client, userEmail, context.role || "viewer", responderName);
                 if (userEmail) await loadPendingSchedules(context.client, userEmail);
             }
