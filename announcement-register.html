@@ -227,6 +227,8 @@
         let currentUserEmail = "";
         let allMembers = [];
         let allTitleMasters = [];
+        // 日程調整の決定から開いた場合の元の日程調整ID（登録時に announcements.schedule_event_id へ保存）
+        let prefillScheduleEventId = null;
 
             function setAnnouncementMessage(text, isError = false) {
                 const el = document.getElementById("announcement-message");
@@ -300,6 +302,9 @@
             document.querySelectorAll("#member-group-list .member-group-checkbox").forEach((checkbox) => {
                 checkbox.checked = false;
             });
+            // クリア後に別のお知らせを作っても日程調整に紐づかないよう、引き継ぎを解除する
+            prefillScheduleEventId = null;
+            document.getElementById("schedule-prefill-banner").classList.add("hidden");
         }
 
         function resolveOwnerName(session, profile) {
@@ -704,6 +709,7 @@
                 created_by_email: currentUserEmail || null,
                 updated_at: new Date().toISOString()
             };
+            if (prefillScheduleEventId) payload.schedule_event_id = prefillScheduleEventId;
 
             const missingFields = [];
             if (!payload.title) missingFields.push("タイトル");
@@ -748,6 +754,8 @@
             }
 
             const announcementNo = data[0]?.no;
+            // 同じ日程調整を続けて別のお知らせに紐づけないよう、登録できたら解除する
+            prefillScheduleEventId = null;
 
             // 配信対象を登録
             if (visibility === "specific" && selectedMembers.length > 0) {
@@ -1162,12 +1170,14 @@
             if (e.key === "Enter") { e.preventDefault(); addTitleMasterFromInput(); }
         });
 
-        function prefillFromSchedule() {
+        async function prefillFromSchedule() {
             const params = new URLSearchParams(window.location.search);
             if (params.get("from_schedule") !== "1") return;
 
             const banner = document.getElementById("schedule-prefill-banner");
-            const eventId = params.get("schedule_event_id");
+            const rawEventId = params.get("schedule_event_id") || "";
+            const eventId = /^\d+$/.test(rawEventId) ? rawEventId : "";
+            prefillScheduleEventId = eventId ? Number(eventId) : null;
             const title   = params.get("title") || "";
             const date    = params.get("notice_date") || "";
             const startH  = params.get("start_h") || "";
@@ -1176,7 +1186,23 @@
             const endM    = params.get("end_m") || "";
             const remarks = params.get("remarks") || "";
             const visibility = params.get("visibility") || "all";
-            const recipients = params.get("recipients") ? params.get("recipients").split(",").filter(Boolean) : [];
+            let recipients = params.get("recipients") ? params.get("recipients").split(",").map(normalizeEmail).filter(Boolean) : [];
+            let recipientsNote = "";
+
+            // 対象者指定の日程調整は、URLに対象者が無ければ日程調整の対象者を読み込む（全員向けで保存されるのを防ぐ）
+            if (visibility === "specific" && recipients.length === 0 && eventId) {
+                const { data: scheduleRecipients, error: scheduleRecipientsError } = await dbClient
+                    .from("schedule_recipients")
+                    .select("member_email")
+                    .eq("event_id", Number(eventId));
+                if (scheduleRecipientsError) {
+                    console.warn("日程調整の対象者の取得に失敗:", scheduleRecipientsError);
+                }
+                recipients = Array.from(new Set((scheduleRecipients || []).map((r) => normalizeEmail(r.member_email)).filter(Boolean)));
+                if (recipients.length === 0) {
+                    recipientsNote = "日程調整の対象者を読み込めませんでした。配信対象メンバーを選択してください。";
+                }
+            }
 
             // フォーム入力
             if (title)   document.getElementById("notice_title").value = title;
@@ -1188,20 +1214,21 @@
             if (remarks) document.getElementById("remarks").value = remarks;
 
             // 対象者
-            if (visibility === "specific" && recipients.length > 0) {
+            // 対象者指定の日程調整は、読み込めなかった場合も「対象者指定」にしておく（未選択なら保存時に止まる）
+            if (visibility === "specific") {
                 document.getElementById("visibility_specific").checked = true;
                 document.getElementById("visibility_all").checked = false;
                 document.getElementById("specific-members-section").classList.remove("hidden");
                 // メンバーチェックボックスに反映
                 document.querySelectorAll("#members-list .member-checkbox").forEach(cb => {
-                    cb.checked = recipients.includes(cb.value);
+                    cb.checked = recipients.includes(normalizeEmail(cb.value));
                 });
             }
 
             // バナー表示
             if (banner) {
                 document.getElementById("schedule-prefill-desc").textContent =
-                    `「${title}」の情報を引き継いでいます。内容を確認・修正してから保存してください。`;
+                    `「${title}」の情報を引き継いでいます。内容を確認・修正してから保存してください。${recipientsNote}`;
                 if (eventId) {
                     document.getElementById("schedule-prefill-link").href =
                         `schedule.html?id=${eventId}`;
@@ -1224,7 +1251,7 @@
                 await loadMembers();
                 await loadTitleMasters();
                 await loadRecentAnnouncements();
-                prefillFromSchedule();
+                await prefillFromSchedule();
             }
         });
     </script>
