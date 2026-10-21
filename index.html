@@ -2,10 +2,17 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com https://accounts.google.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://calendar.google.com; worker-src blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.quilljs.com https://accounts.google.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.quilljs.com 'unsafe-inline'; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://gnnfzimhfizbfhvwuzbf.supabase.co wss://gnnfzimhfizbfhvwuzbf.supabase.co https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://calendar.google.com; worker-src 'self' blob:; manifest-src 'self'; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;">
     <meta http-equiv="Cache-Control" content="no-store, max-age=0">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>南国市議会DXポータル | デジタル執務室</title>
+    <!-- ホーム画面アイコン(ショートカット)をWebアプリとして扱わせる -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="南国市議会">
+    <meta name="theme-color" content="#4338ca">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha384-3B6NwesSXE7YJlcLI9RpRqGf2p/EgVH8BgoKTaUrmKNDkHPStTQ3EyoYjCGXaOTS" crossorigin="anonymous">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -54,6 +61,16 @@
                 <button id="schedule-unanswered-btn" type="button" class="unanswered-blink hidden inline-flex items-center gap-2 text-white font-bold text-sm px-4 py-2 rounded-lg shadow">
                     <i class="fas fa-calendar-check"></i><span>日程調整 未回答 <span id="schedule-unanswered-count">0</span>件</span>
                 </button>
+            </div>
+
+            <!-- ホーム画面アイコンの印・開始前通知の有効化(ホーム画面から開いていて、通知が未設定の時だけ表示) -->
+            <div id="app-badge-setup" class="mt-4 hidden bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                <p class="text-sm font-semibold text-indigo-900"><i class="fas fa-mobile-alt mr-1"></i>ホーム画面アイコンの印と、お知らせの開始前通知</p>
+                <p id="app-badge-setup-desc" class="mt-1 text-xs text-indigo-800">有効にすると、お知らせの開始前に通知が届き、アイコンに数字が付きます。</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                    <button id="app-badge-enable-btn" type="button" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">通知と印を有効にする</button>
+                    <button id="app-badge-test-btn" type="button" class="hidden bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-300 text-sm font-semibold px-4 py-2 rounded-lg">印の表示テスト</button>
+                </div>
             </div>
 
             <!-- お知らせタイル -->
@@ -298,6 +315,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js" integrity="sha384-o+Hkm/usHFhCEWo1Ae1cLsOLiQQNrD2UfI424QDAaiZR7URnC8v35ey7s2sbGZHB" crossorigin="anonymous"></script>
     <script src="auth-config.js"></script>
     <script src="auth.js"></script>
+    <script src="app-badge.js"></script>
     <script>
         let allAnnouncementRows = [];
         let allMembers = [];
@@ -1699,6 +1717,46 @@
                 // 作成者向け通知の読み込み失敗は無視
             }
         }
+
+        // ホーム画面アイコンの印：トップを開いたら・アプリへ戻ったら消す。ホーム画面から開いている時だけ有効化の案内を出す
+        (function setupAppBadge() {
+            if (!window.AppBadge) return;
+            const box = document.getElementById("app-badge-setup");
+            const desc = document.getElementById("app-badge-setup-desc");
+            const enableBtn = document.getElementById("app-badge-enable-btn");
+            const testBtn = document.getElementById("app-badge-test-btn");
+
+            function refreshSetupBox() {
+                const state = window.AppBadge.notificationState();
+                if (!window.AppBadge.isStandalone() || state === "unsupported") {
+                    box.classList.add("hidden");
+                    return;
+                }
+                box.classList.remove("hidden");
+                enableBtn.classList.toggle("hidden", state !== "default");
+                testBtn.classList.toggle("hidden", state !== "granted");
+                if (state === "granted") {
+                    desc.textContent = "通知は有効です。「印の表示テスト」で、ホーム画面のアイコンに数字が付くか確認できます(次にトップを開くと消えます)。";
+                } else if (state === "denied") {
+                    desc.textContent = "通知がオフになっています。端末の「設定」→「通知」から、このアイコンの通知を許可してください。";
+                }
+            }
+
+            enableBtn.addEventListener("click", async () => {
+                await window.AppBadge.requestPermission();
+                refreshSetupBox();
+            });
+            testBtn.addEventListener("click", async () => {
+                await window.AppBadge.setBadge(1);
+                desc.textContent = "アイコンに「1」を付けました。ホーム画面に戻って確認してください。";
+            });
+
+            window.AppBadge.clearBadge();
+            refreshSetupBox();
+            document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState === "visible") window.AppBadge.clearBadge();
+            });
+        })();
 
         portalAuth.init({
             requireAuth: true,
